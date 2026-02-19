@@ -14,6 +14,7 @@ struct DownloadRequest {
 	int nItemIndex;
 	int nLastPercent; 
 	DWORD dwLastTick; // 마지막으로 데이터가 움직인 시간 저장
+	LONGLONG nLastBytes; // 👈 각 스레드별 개별 전송량 저장용 변수 추가
 };
 
 #pragma once
@@ -26,6 +27,13 @@ class Ckpaxkkk01Dlg : public CDialogEx
 public:
 	Ckpaxkkk01Dlg(CWnd* pParent = nullptr);	// 표준 생성자입니다.
 	HANDLE m_hSemaphore; // 👈 반드시 클래스 내부에 선언하세요.
+
+	CStatusBar m_StatusBar; // 상태바 객체
+	int m_nTotalFiles;      // 전체 파일 개수
+	int m_nDoneFiles;       // 완료된 파일 개수
+
+	// 상태 업데이트를 위한 도우미 함수 선언
+	void UpdateTotalStatus();
 
 // 대화 상자 데이터입니다.
 #ifdef AFX_DESIGN_TIME
@@ -60,4 +68,8 @@ public:
 	afx_msg void OnBnClickedBtnUpload();
 	afx_msg void OnLvnItemchangedListDownload(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnBnClickedBtnClearFinished();
+	afx_msg void OnBnClickedChkAutoClear();
+	afx_msg void ProcessAutoClear();
 };
+
+
