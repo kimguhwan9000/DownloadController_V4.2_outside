@@ -17,6 +17,7 @@ struct DownloadRequest {
 	DWORD dwLastTick;    // 타임아웃 체크용 (10초)
 	DWORD dwSpeedTick;   // [추가] 속도 계산 주기용 (1초 마다 측정)
 	LONGLONG nLastBytes; // 이전 전송량 저장용
+	LONGLONG nTotalBytes; // 파일의 전체 크기(바이트) 저장용 추가
 };
 
 

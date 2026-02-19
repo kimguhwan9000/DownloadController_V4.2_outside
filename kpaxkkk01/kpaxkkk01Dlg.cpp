@@ -82,59 +82,51 @@ UINT UploadThreadProc(LPVOID pParam) {
     if (pReq == NULL) return 0;
 
     Ckpaxkkk01Dlg* pMain = (Ckpaxkkk01Dlg*)CWnd::FromHandle(pReq->hMainWnd);
-
-    // 1. 세마포어 대기
     WaitForSingleObject(pMain->m_hSemaphore, INFINITE);
 
-    // 대기 시간이 길었을 수 있으므로 통과 직후 시간과 전송량 초기화
+    // [중요] 초기화: 시작 시간을 현재 시간으로 세팅
     pReq->dwLastTick = GetTickCount();
+    pReq->dwSpeedTick = GetTickCount();
     pReq->nLastBytes = 0;
     pReq->nLastPercent = -1;
 
     BOOL bResult = FALSE;
     int retryCount = 0;
-    const int MAX_RETRY = 3;
-
-    while (retryCount < MAX_RETRY) {
+    while (retryCount < 3) {
         bResult = CopyFileExW(
             pReq->source.c_str(), pReq->target.c_str(),
             [](LARGE_INTEGER total, LARGE_INTEGER trans, LARGE_INTEGER, LARGE_INTEGER, DWORD, DWORD, HANDLE, HANDLE, LPVOID data) -> DWORD {
                 DownloadRequest* p = (DownloadRequest*)data;
                 DWORD dwCurrentTick = GetTickCount();
 
+                // 1. 전체 크기 저장
+                if (p->nTotalBytes == 0) p->nTotalBytes = total.QuadPart;
 
-                // 1. 타임아웃 체크 (p-> 멤버 사용)
-                if (trans.QuadPart > p->nLastBytes) {
-                    p->dwLastTick = dwCurrentTick;
-                }
-                if (dwCurrentTick - p->dwLastTick > 10000) return PROGRESS_CANCEL;
-
-                // 2. 속도 계산 (1초 주기)
+                // 2. 속도 및 ETA 계산 (1초 주기)
                 if (dwCurrentTick - p->dwSpeedTick >= 1000) {
                     double diff = (double)(trans.QuadPart - p->nLastBytes);
                     double mbps = diff / (1024.0 * 1024.0);
 
-                    // UI에 속도 전송
-                    ::PostMessage(p->hMainWnd, WM_UPDATE_SPEED, (WPARAM)(mbps * 100), (LPARAM)p->nItemIndex);
+                    int eta = 0;
+                    if (diff > 0) {
+                        eta = (int)((total.QuadPart - trans.QuadPart) / diff);
+                    }
+
+                    // [핵심] 속도(*10)와 ETA를 합쳐서 UI로 전송
+                    WPARAM wp = MAKEWPARAM((WORD)(mbps * 10), (WORD)eta);
+                    ::PostMessage(p->hMainWnd, WM_UPDATE_SPEED, wp, (LPARAM)p->nItemIndex);
 
                     p->dwSpeedTick = dwCurrentTick;
                     p->nLastBytes = trans.QuadPart;
+                    p->dwLastTick = dwCurrentTick; // 데이터가 움직였으므로 타임아웃 리셋
                 }
 
-                // [핵심 수정] static을 쓰지 않고 p->nLastBytes를 사용합니다.
-                if (trans.QuadPart > p->nLastBytes) {
-                    p->dwLastTick = dwCurrentTick; // 데이터 전송이 확인되면 시간 갱신
-                    p->nLastBytes = trans.QuadPart;
-                }
+                // 3. 타임아웃 체크 (10초간 멈춤 시)
+                if (dwCurrentTick - p->dwLastTick > 10000) return PROGRESS_CANCEL;
 
-                // 10초간 전송량 변화가 전혀 없으면 끊긴 것으로 간주하고 취소(재시도로 유도)
-                if (dwCurrentTick - p->dwLastTick > 10000) {
-                    return PROGRESS_CANCEL;
-                }
-
-                // UI 업데이트
+                // 4. 진행률(게이지) 업데이트
                 int percent = (int)((double)trans.QuadPart / (double)total.QuadPart * 100);
-                if (percent > p->nLastPercent || percent == 100) {
+                if (percent > p->nLastPercent) {
                     p->nLastPercent = percent;
                     ::PostMessage(p->hMainWnd, WM_UPDATE_PROGRESS, (WPARAM)percent, (LPARAM)p->nItemIndex);
                 }
@@ -143,19 +135,16 @@ UINT UploadThreadProc(LPVOID pParam) {
             pReq, NULL, COPY_FILE_NO_BUFFERING
         );
 
-        if (bResult) break; // 성공 시 루프 탈출
-
-        // 실패 시 재시도 준비
+        if (bResult) break;
         retryCount++;
-        pReq->dwLastTick = GetTickCount(); // 재시도 전 시간 리셋
-        pReq->nLastBytes = 0;              // 전송량 리셋
-        Sleep(2000); // 네트워크 안정을 위해 2초 대기 후 다시 시도
+        pReq->dwLastTick = GetTickCount();
+        pReq->dwSpeedTick = GetTickCount();
+        pReq->nLastBytes = 0;
+        Sleep(2000);
     }
 
-    // 결과 보고 및 세마포어 반납
     ::PostMessage(pReq->hMainWnd, WM_DOWNLOAD_COMPLETE, (WPARAM)bResult, (LPARAM)pReq->nItemIndex);
     ReleaseSemaphore(pMain->m_hSemaphore, 1, NULL);
-
     delete pReq;
     return 0;
 }
@@ -181,7 +170,7 @@ BOOL Ckpaxkkk01Dlg::OnInitDialog() {
 
     m_ListCtrl.InsertColumn(0, L"파일명", LVCFMT_LEFT, 180);
     m_ListCtrl.InsertColumn(1, L"진행률", LVCFMT_CENTER, 100);
-    m_ListCtrl.InsertColumn(2, L"상태", LVCFMT_LEFT, 120);
+    m_ListCtrl.InsertColumn(2, L"상태", LVCFMT_LEFT, 220);
 
     DragAcceptFiles(TRUE);
     ChangeWindowMessageFilter(WM_DROPFILES, MSGFLT_ADD);
@@ -498,14 +487,28 @@ void Ckpaxkkk01Dlg::OnBnClickedBtnStart()
 }
 
 LRESULT Ckpaxkkk01Dlg::OnUpdateSpeed(WPARAM wp, LPARAM lp) {
-    double mbps = (double)wp / 100.0; // 다시 소수점으로 복원
+    int speedData = LOWORD(wp); // 속도 (*10 상태)
+    int eta = HIWORD(wp);       // 남은 시간 (초)
     int nIdx = (int)lp;
 
-    CString strSpeed;
-    if (mbps < 0.1) strSpeed = L"준비 중...";
-    else strSpeed.Format(L"전송 중 (%.2f MB/s)", mbps);
+    double mbps = speedData / 10.0;
+    CString strStatus;
 
-    // 2번 컬럼(상태)에 속도 표시
-    m_ListCtrl.SetItemText(nIdx, 2, strSpeed);
+    if (mbps < 0.1) {
+        strStatus = L"연결 중...";
+    }
+    else {
+        // [수정] 남은 시간을 분:초 형식으로 변환
+        if (eta >= 60) {
+            strStatus.Format(L"전송 중 (%.1f MB/s) - %d분 %d초 남음", mbps, eta / 60, eta % 60);
+        }
+        else {
+            strStatus.Format(L"전송 중 (%.1f MB/s) - %d초 남음", mbps, eta);
+        }
+    }
+
+    // 리스트 컨트롤의 '상태' 컬럼 업데이트
+    m_ListCtrl.SetItemText(nIdx, 2, strStatus);
+
     return 0;
 }
