@@ -8,6 +8,7 @@
 #define new DEBUG_NEW
 #endif
 
+
 // [추가] 커스텀 드로우 매크로 정의 (에러 해결용)
 #ifndef CDDS_SUBITEMPREPAINT
 #define CDDS_SUBITEMPREPAINT (CDDS_ITEMPREPAINT | 0x00020000)
@@ -71,6 +72,7 @@ BEGIN_MESSAGE_MAP(Ckpaxkkk01Dlg, CDialogEx)
     ON_COMMAND(ID_MENU_DELETE, &Ckpaxkkk01Dlg::OnMenuDelete)
     ON_BN_CLICKED(IDC_BTN_CLEAR_FINISHED, &Ckpaxkkk01Dlg::OnBnClickedBtnClearFinished)
     ON_BN_CLICKED(IDC_CHK_AUTO_CLEAR, &Ckpaxkkk01Dlg::OnBnClickedChkAutoClear)
+    ON_MESSAGE(WM_UPDATE_SPEED, &Ckpaxkkk01Dlg::OnUpdateSpeed)
 END_MESSAGE_MAP()
 
 
@@ -99,6 +101,25 @@ UINT UploadThreadProc(LPVOID pParam) {
             [](LARGE_INTEGER total, LARGE_INTEGER trans, LARGE_INTEGER, LARGE_INTEGER, DWORD, DWORD, HANDLE, HANDLE, LPVOID data) -> DWORD {
                 DownloadRequest* p = (DownloadRequest*)data;
                 DWORD dwCurrentTick = GetTickCount();
+
+
+                // 1. 타임아웃 체크 (p-> 멤버 사용)
+                if (trans.QuadPart > p->nLastBytes) {
+                    p->dwLastTick = dwCurrentTick;
+                }
+                if (dwCurrentTick - p->dwLastTick > 10000) return PROGRESS_CANCEL;
+
+                // 2. 속도 계산 (1초 주기)
+                if (dwCurrentTick - p->dwSpeedTick >= 1000) {
+                    double diff = (double)(trans.QuadPart - p->nLastBytes);
+                    double mbps = diff / (1024.0 * 1024.0);
+
+                    // UI에 속도 전송
+                    ::PostMessage(p->hMainWnd, WM_UPDATE_SPEED, (WPARAM)(mbps * 100), (LPARAM)p->nItemIndex);
+
+                    p->dwSpeedTick = dwCurrentTick;
+                    p->nLastBytes = trans.QuadPart;
+                }
 
                 // [핵심 수정] static을 쓰지 않고 p->nLastBytes를 사용합니다.
                 if (trans.QuadPart > p->nLastBytes) {
@@ -474,4 +495,17 @@ void Ckpaxkkk01Dlg::OnBnClickedBtnStart()
     }
 
     UpdateTotalStatus();
+}
+
+LRESULT Ckpaxkkk01Dlg::OnUpdateSpeed(WPARAM wp, LPARAM lp) {
+    double mbps = (double)wp / 100.0; // 다시 소수점으로 복원
+    int nIdx = (int)lp;
+
+    CString strSpeed;
+    if (mbps < 0.1) strSpeed = L"준비 중...";
+    else strSpeed.Format(L"전송 중 (%.2f MB/s)", mbps);
+
+    // 2번 컬럼(상태)에 속도 표시
+    m_ListCtrl.SetItemText(nIdx, 2, strSpeed);
+    return 0;
 }

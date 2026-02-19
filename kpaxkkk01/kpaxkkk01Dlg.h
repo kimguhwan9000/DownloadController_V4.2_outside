@@ -6,16 +6,19 @@
 #include <string>
 #define WM_UPDATE_PROGRESS (WM_USER + 100)
 #define WM_DOWNLOAD_COMPLETE (WM_USER + 101)
+#define WM_UPDATE_SPEED (WM_USER + 102) // 속도 업데이트 메시지
 
 struct DownloadRequest {
 	HWND hMainWnd;
 	std::wstring source;
 	std::wstring target;
 	int nItemIndex;
-	int nLastPercent; 
-	DWORD dwLastTick; // 마지막으로 데이터가 움직인 시간 저장
-	LONGLONG nLastBytes; // 👈 각 스레드별 개별 전송량 저장용 변수 추가
+	int nLastPercent;
+	DWORD dwLastTick;    // 타임아웃 체크용 (10초)
+	DWORD dwSpeedTick;   // [추가] 속도 계산 주기용 (1초 마다 측정)
+	LONGLONG nLastBytes; // 이전 전송량 저장용
 };
+
 
 #pragma once
 
@@ -46,7 +49,7 @@ public:
 	afx_msg void OnDropFiles(HDROP hDropInfo);
 	afx_msg void OnNMRClickListDownload(NMHDR* pNMHDR, LRESULT* pResult); // 우클릭 함수
 	afx_msg void OnMenuDelete(); // 삭제 기능 함수
-
+	afx_msg LRESULT OnUpdateSpeed(WPARAM wp, LPARAM lp); // 👈 이 줄이 있는지 확인!
 
 // 구현입니다.
 protected:
