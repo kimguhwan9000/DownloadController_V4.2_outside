@@ -1,0 +1,15 @@
+# Visual Studio 임시 파일 및 빌드 결과물 제외
+.vs/
+Debug/
+Release/
+x64/
+x86/
+*.user
+*.aps
+*.opendb
+*.pdb
+*.obj
+*.exe
+*.log
+*.tlog
+*.lastbuildstate
