@@ -44,6 +44,7 @@ public:
 	CStatusBar m_StatusBar; // 상태바 객체
 	int m_nTotalFiles;      // 전체 파일 개수
 	int m_nDoneFiles;       // 완료된 파일 개수
+	CString m_strDownloadPath; // 실제 다운로드 경로 저장
 
 	// 상태 업데이트를 위한 도우미 함수 선언
 	void UpdateTotalStatus();
@@ -85,6 +86,7 @@ public:
 	afx_msg void OnBnClickedBtnClearFinished();
 	afx_msg void OnBnClickedChkAutoClear();
 	afx_msg void ProcessAutoClear();
+	afx_msg void OnBnClickedBtnBrowse();
 };
 
 

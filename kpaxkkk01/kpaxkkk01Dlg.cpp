@@ -76,6 +76,7 @@ BEGIN_MESSAGE_MAP(Ckpaxkkk01Dlg, CDialogEx)
     ON_MESSAGE(WM_UPDATE_SPEED, &Ckpaxkkk01Dlg::OnUpdateSpeed)
     ON_BN_CLICKED(IDC_BTN_DOWNLOAD_SELECTED, &Ckpaxkkk01Dlg::OnBnClickedBtnDownloadSelected)
     ON_BN_CLICKED(IDC_BTN_SELECT_ALL, &Ckpaxkkk01Dlg::OnBnClickedBtnSelectAll)
+    ON_BN_CLICKED(IDC_BTN_BROWSE, &Ckpaxkkk01Dlg::OnBnClickedBtnBrowse)
 END_MESSAGE_MAP()
 
 
@@ -212,6 +213,12 @@ BOOL Ckpaxkkk01Dlg::OnInitDialog() {
     }
 
     UpdateTotalStatus();
+
+
+
+    // 초기 기본 경로 설정
+    m_strDownloadPath = L"C:\\Test";
+    SetDlgItemText(IDC_EDIT_PATH, m_strDownloadPath);
     return TRUE;
 }
 
@@ -564,7 +571,27 @@ void Ckpaxkkk01Dlg::OnBnClickedBtnDownloadSelected()
             // 경로 문자열 생성
             CString strBase = L"H:\\PC2 2TB HDD 자료\\영화,드라마,애니메이션\\마쇼파일\\애니메이션, 전대물\\하울의움직이는성 (2004)\\";
             CString strFullSource = strBase + strFileName;
-            CString strFullTarget = L"C:\\Test\\" + strFileName;
+            //CString strFullTarget = L"C:\\Test\\" + strFileName;
+
+
+            // 1. Edit Control에 적힌 현재 경로를 가져옵니다.
+            CString strSelectedPath;
+            GetDlgItemText(IDC_EDIT_PATH, strSelectedPath); // ID를 직접 지정해서 값을 가져옴
+
+            // 2. 경로 끝에 역슬래시(\)가 있는지 확인하고 보정합니다. (매우 중요!)
+            if (strSelectedPath.Right(1) != L"\\") {
+                strSelectedPath += L"\\";
+            }
+
+            // 3. 사용자가 선택한 폴더가 실제로 존재하는지 확인하고, 없으면 생성합니다.
+            if (!strSelectedPath.IsEmpty()) {
+                CreateDirectory(strSelectedPath, NULL);
+            }
+
+            // ... 루프(for문) 안에서 ...
+
+            // 4. [변경 핵심] 고정 경로 대신 strSelectedPath 변수를 사용합니다.
+            CString strFullTarget = strSelectedPath + strFileName;
 
             // [핵심] 포인터가 아니라 실제 값을 복사해서 스레드에 넘김
             pReq->source = (LPCTSTR)strFullSource;
@@ -608,4 +635,18 @@ void Ckpaxkkk01Dlg::OnBnClickedBtnSelectAll()
         SetDlgItemText(IDC_BTN_SELECT_ALL, L"전체 해제");
     else
         SetDlgItemText(IDC_BTN_SELECT_ALL, L"전체 선택");
+}
+void Ckpaxkkk01Dlg::OnBnClickedBtnBrowse()
+{
+    // 최신 스타일의 폴더 선택 대화상자
+    CFolderPickerDialog dlg(m_strDownloadPath, OFN_FILEMUSTEXIST, this);
+
+    if (dlg.DoModal() == IDOK)
+    {
+        // 선택한 경로 가져오기
+        m_strDownloadPath = dlg.GetPathName();
+
+        // Edit Control에 경로 표시
+        SetDlgItemText(IDC_EDIT_PATH, m_strDownloadPath);
+    }
 }
