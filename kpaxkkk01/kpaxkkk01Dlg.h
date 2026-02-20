@@ -8,6 +8,10 @@
 #define WM_DOWNLOAD_COMPLETE (WM_USER + 101)
 #define WM_UPDATE_SPEED (WM_USER + 102) // 속도 업데이트 메시지
 
+// [추가] 스레드 함수 선언 (컴파일러에게 함수의 존재를 알림)
+UINT UploadThreadProc(LPVOID pParam);
+UINT DownloadThreadProc(LPVOID pParam);
+
 struct DownloadRequest {
 	HWND hMainWnd;
 	std::wstring source;
@@ -66,6 +70,7 @@ protected:
 
 	afx_msg LRESULT OnUpdateProgress(WPARAM wp, LPARAM lp);
 	afx_msg LRESULT OnDownloadComplete(WPARAM wp, LPARAM lp);
+	afx_msg void OnBnClickedBtnDownloadSelected();
 public:
 	afx_msg void OnBnClickedBtnStart();
 	CListCtrl m_ListCtrl;

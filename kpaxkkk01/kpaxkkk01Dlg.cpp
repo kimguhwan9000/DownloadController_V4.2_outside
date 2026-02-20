@@ -73,16 +73,34 @@ BEGIN_MESSAGE_MAP(Ckpaxkkk01Dlg, CDialogEx)
     ON_BN_CLICKED(IDC_BTN_CLEAR_FINISHED, &Ckpaxkkk01Dlg::OnBnClickedBtnClearFinished)
     ON_BN_CLICKED(IDC_CHK_AUTO_CLEAR, &Ckpaxkkk01Dlg::OnBnClickedChkAutoClear)
     ON_MESSAGE(WM_UPDATE_SPEED, &Ckpaxkkk01Dlg::OnUpdateSpeed)
+    ON_BN_CLICKED(IDC_BTN_DOWNLOAD_SELECTED, &Ckpaxkkk01Dlg::OnBnClickedBtnDownloadSelected)
 END_MESSAGE_MAP()
 
 
 // [추가] 실제 업로드 파일 복사를 수행하는 워커 스레드 함수
 UINT UploadThreadProc(LPVOID pParam) {
+    //AfxMessageBox(L"1");
+
+
     DownloadRequest* pReq = (DownloadRequest*)pParam;
     if (pReq == NULL) return 0;
 
     Ckpaxkkk01Dlg* pMain = (Ckpaxkkk01Dlg*)CWnd::FromHandle(pReq->hMainWnd);
+
+
+    // [테스트 1] 이 메시지가 뜨는지 확인하세요.
+    // 안 뜬다면 AfxBeginThread 호출 자체가 실패한 것입니다.
+    // AfxMessageBox(L"스레드 생성 성공! 세마포어 대기 시작");
+
+    // 세마포어 대기 (여기서 멈춰 있을 확률 99%)
     WaitForSingleObject(pMain->m_hSemaphore, INFINITE);
+
+    // [테스트 2] 이 메시지가 뜨는지 확인하세요.
+    // 1번은 뜨는데 2번이 안 뜬다면, 이전 스레드들이 자리를 안 비워준 것입니다.
+    // AfxMessageBox(L"세마포어 통과! 실제 전송 시작");
+
+    WaitForSingleObject(pMain->m_hSemaphore, INFINITE);
+    //AfxMessageBox(L"2");
 
     // [중요] 초기화: 시작 시간을 현재 시간으로 세팅
     pReq->dwLastTick = GetTickCount();
@@ -135,6 +153,7 @@ UINT UploadThreadProc(LPVOID pParam) {
             pReq, NULL, COPY_FILE_NO_BUFFERING
         );
 
+
         if (bResult) break;
         retryCount++;
         pReq->dwLastTick = GetTickCount();
@@ -165,8 +184,14 @@ BOOL Ckpaxkkk01Dlg::OnInitDialog() {
     SetIcon(m_hIcon, FALSE);
 
     // 1. 초기 설정
-    m_hSemaphore = CreateSemaphore(NULL, 3, 3, NULL);
-    m_ListCtrl.SetExtendedStyle(LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
+    m_hSemaphore = CreateSemaphore(NULL, 10, 10, NULL);
+
+    // LVS_EX_CHECKBOXES 스타일 추가
+    m_ListCtrl.SetExtendedStyle(LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER | LVS_EX_CHECKBOXES);
+
+    // LVS_EX_CHECKBOXES 가 누락되면 GetCheck가 절대 작동하지 않습니다.
+    DWORD dwExStyle = LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_CHECKBOXES | LVS_EX_DOUBLEBUFFER;
+    m_ListCtrl.SetExtendedStyle(dwExStyle);
 
     m_ListCtrl.InsertColumn(0, L"파일명", LVCFMT_LEFT, 180);
     m_ListCtrl.InsertColumn(1, L"진행률", LVCFMT_CENTER, 100);
@@ -250,6 +275,17 @@ LRESULT Ckpaxkkk01Dlg::OnDownloadComplete(WPARAM wp, LPARAM lp) {
     }
 
     UpdateTotalStatus();
+
+
+    // 전체 파일 수와 완료된 파일 수가 같은지 체크합니다.
+    if (m_nDoneFiles == m_nTotalFiles && m_nTotalFiles > 0) {
+        // 모든 전송이 끝났을 때 딱 한 번 폴더 열기
+        ShellExecute(NULL, L"open", L"C:\\Test", NULL, NULL, SW_SHOW);
+
+        // 축하 메시지를 띄우고 싶다면 추가
+        // AfxMessageBox(L"모든 파일의 다운로드가 완료되었습니다!");
+    }
+
     return 0;
 }
 
@@ -449,39 +485,27 @@ void Ckpaxkkk01Dlg::OnNMRClickListDownload(NMHDR* pNMHDR, LRESULT* pResult)
 // '시작' 버튼을 눌렀을 때 실행되는 함수
 void Ckpaxkkk01Dlg::OnBnClickedBtnStart()
 {
-    int nCount = m_ListCtrl.GetItemCount();
-    if (nCount == 0)
-    {
-        AfxMessageBox(L"전송할 파일이 목록에 없습니다.");
-        return;
+    m_ListCtrl.DeleteAllItems(); // 기존 목록 청소
+
+    CFileFind finder;
+    // 서버의 공유 폴더 경로 (실제 경로로 수정하세요)
+    //CString strServerPath = L"C:\\Test\\*.*";
+    CString strServerPath = L"H:\\PC2 2TB HDD 자료\\영화,드라마,애니메이션\\마쇼파일\\애니메이션, 전대물\\하울의움직이는성 (2004)\\*.*";
+    //H:\PC2 2TB HDD 자료\영화,드라마,애니메이션\마쇼파일\애니메이션, 전대물\나루토 (2002)
+
+    BOOL bWorking = finder.FindFile(strServerPath);
+    while (bWorking) {
+        bWorking = finder.FindNextFile();
+
+        if (finder.IsDots()) continue; // . 이나 .. 폴더 제외
+        if (finder.IsDirectory()) continue; // 일단 파일만 표시
+
+        // 리스트에 파일명 추가
+        int nIdx = m_ListCtrl.InsertItem(m_ListCtrl.GetItemCount(), finder.GetFileName());
+        m_ListCtrl.SetItemText(nIdx, 1, L"0%");
+        m_ListCtrl.SetItemText(nIdx, 2, L"대기 중 (체크 후 다운로드)");
     }
-
-    // 리스트의 모든 항목을 확인하며 대기 중인 파일을 전송 시작
-    for (int i = 0; i < nCount; i++)
-    {
-        CString strStatus = m_ListCtrl.GetItemText(i, 2);
-
-        // 이미 완료되었거나 진행 중인 파일은 건너뛰고, "연결 중..." 또는 "대기 중" 상태인 것만 시작
-        if (strStatus == L"연결 중..." || strStatus == L"대기 중")
-        {
-            m_ListCtrl.SetItemText(i, 2, L"전송 중...");
-
-            // 스레드에 전달할 데이터 설정
-            DownloadRequest* pReq = new DownloadRequest();
-            pReq->hMainWnd = this->GetSafeHwnd();
-            pReq->nItemIndex = i;
-            pReq->nLastPercent = -1;
-            pReq->dwLastTick = GetTickCount();
-
-            // 리스트에서 파일명과 경로 정보를 가져와서 설정 (사용자 환경에 맞게 조정 필요)
-            CString strFileName = m_ListCtrl.GetItemText(i, 0);
-            //pReq->source = L"\\\\Server\\Public\\" + std::wstring((LPCTSTR)strFileName); // 예시 서버 경로
-            pReq->target = L"C:\\Test\\" + std::wstring((LPCTSTR)strFileName);           // 예시 저장 경로
-
-            // 워커 스레드 생성 및 시작
-            AfxBeginThread(DownloadThreadProc, pReq);
-        }
-    }
+    finder.Close();
 
     UpdateTotalStatus();
 }
@@ -511,4 +535,51 @@ LRESULT Ckpaxkkk01Dlg::OnUpdateSpeed(WPARAM wp, LPARAM lp) {
     m_ListCtrl.SetItemText(nIdx, 2, strStatus);
 
     return 0;
+}
+
+
+void Ckpaxkkk01Dlg::OnBnClickedBtnDownloadSelected()
+{
+    CreateDirectory(L"C:\\Test", NULL);
+
+    int nCount = m_ListCtrl.GetItemCount();
+    int nActivated = 0;
+
+    for (int i = 0; i < nCount; i++)
+    {
+        // 체크박스 또는 선택된 항목 확인
+        if (m_ListCtrl.GetCheck(i) || (m_ListCtrl.GetItemState(i, LVIS_SELECTED) & LVIS_SELECTED))
+        {
+            nActivated++;
+            CString strFileName = m_ListCtrl.GetItemText(i, 0);
+
+            // 메모리 에러 방지를 위해 새로 할당
+            DownloadRequest* pReq = new DownloadRequest();
+            pReq->hMainWnd = this->GetSafeHwnd();
+            pReq->nItemIndex = i;
+
+            // 경로 문자열 생성
+            CString strBase = L"H:\\PC2 2TB HDD 자료\\영화,드라마,애니메이션\\마쇼파일\\애니메이션, 전대물\\하울의움직이는성 (2004)\\";
+            CString strFullSource = strBase + strFileName;
+            CString strFullTarget = L"C:\\Test\\" + strFileName;
+
+            // [핵심] 포인터가 아니라 실제 값을 복사해서 스레드에 넘김
+            pReq->source = (LPCTSTR)strFullSource;
+            pReq->target = (LPCTSTR)strFullTarget;
+
+            pReq->nTotalBytes = 0;
+            pReq->nLastBytes = 0;
+            pReq->nLastPercent = -1;
+            pReq->dwLastTick = GetTickCount();
+            pReq->dwSpeedTick = GetTickCount();
+
+            m_ListCtrl.SetItemText(i, 2, L"전송 시작 중...");
+
+            // [주의] 딱 한 번만 호출하세요! 
+            // 이전에 아래쪽에 다른 AfxBeginThread가 남아있다면 반드시 지우세요.
+            AfxBeginThread(UploadThreadProc, pReq);
+        }
+    }
+
+    if (nActivated == 0) AfxMessageBox(L"다운로드할 파일을 선택해주세요.");
 }
