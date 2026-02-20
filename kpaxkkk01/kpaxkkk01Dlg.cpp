@@ -51,6 +51,7 @@ Ckpaxkkk01Dlg::Ckpaxkkk01Dlg(CWnd* pParent) : CDialogEx(IDD_KPAXKKK01_DIALOG, pP
     m_hSemaphore = NULL;
     m_nTotalFiles = 0;
     m_nDoneFiles = 0;
+    m_bAllSelected = FALSE; // 처음엔 선택 안 된 상태
 }
 
 void Ckpaxkkk01Dlg::DoDataExchange(CDataExchange* pDX) {
@@ -74,6 +75,7 @@ BEGIN_MESSAGE_MAP(Ckpaxkkk01Dlg, CDialogEx)
     ON_BN_CLICKED(IDC_CHK_AUTO_CLEAR, &Ckpaxkkk01Dlg::OnBnClickedChkAutoClear)
     ON_MESSAGE(WM_UPDATE_SPEED, &Ckpaxkkk01Dlg::OnUpdateSpeed)
     ON_BN_CLICKED(IDC_BTN_DOWNLOAD_SELECTED, &Ckpaxkkk01Dlg::OnBnClickedBtnDownloadSelected)
+    ON_BN_CLICKED(IDC_BTN_SELECT_ALL, &Ckpaxkkk01Dlg::OnBnClickedBtnSelectAll)
 END_MESSAGE_MAP()
 
 
@@ -93,13 +95,13 @@ UINT UploadThreadProc(LPVOID pParam) {
     // AfxMessageBox(L"스레드 생성 성공! 세마포어 대기 시작");
 
     // 세마포어 대기 (여기서 멈춰 있을 확률 99%)
-    WaitForSingleObject(pMain->m_hSemaphore, INFINITE);
+    //WaitForSingleObject(pMain->m_hSemaphore, INFINITE);
 
     // [테스트 2] 이 메시지가 뜨는지 확인하세요.
     // 1번은 뜨는데 2번이 안 뜬다면, 이전 스레드들이 자리를 안 비워준 것입니다.
     // AfxMessageBox(L"세마포어 통과! 실제 전송 시작");
 
-    WaitForSingleObject(pMain->m_hSemaphore, INFINITE);
+    //WaitForSingleObject(pMain->m_hSemaphore, INFINITE);
     //AfxMessageBox(L"2");
 
     // [중요] 초기화: 시작 시간을 현재 시간으로 세팅
@@ -184,7 +186,8 @@ BOOL Ckpaxkkk01Dlg::OnInitDialog() {
     SetIcon(m_hIcon, FALSE);
 
     // 1. 초기 설정
-    m_hSemaphore = CreateSemaphore(NULL, 10, 10, NULL);
+    //m_hSemaphore = CreateSemaphore(NULL, 10, 10, NULL);
+    m_hSemaphore = CreateSemaphore(NULL, 2, 2, NULL);
 
     // LVS_EX_CHECKBOXES 스타일 추가
     m_ListCtrl.SetExtendedStyle(LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER | LVS_EX_CHECKBOXES);
@@ -582,4 +585,27 @@ void Ckpaxkkk01Dlg::OnBnClickedBtnDownloadSelected()
     }
 
     if (nActivated == 0) AfxMessageBox(L"다운로드할 파일을 선택해주세요.");
+}
+
+
+void Ckpaxkkk01Dlg::OnBnClickedBtnSelectAll()
+{
+    // 1. 현재 리스트의 전체 항목 개수를 가져옵니다.
+    int nCount = m_ListCtrl.GetItemCount();
+    if (nCount <= 0) return;
+
+    // 2. 현재 상태의 반대로 바꿉니다. (꺼져있으면 켜고, 켜져있으면 끄기)
+    m_bAllSelected = !m_bAllSelected;
+
+    // 3. 루프를 돌며 모든 항목의 체크박스 상태를 변경합니다.
+    for (int i = 0; i < nCount; i++)
+    {
+        m_ListCtrl.SetCheck(i, m_bAllSelected);
+    }
+
+    // 4. (선택 사항) 버튼 텍스트를 상태에 맞춰 바꿔주면 더 친절합니다.
+    if (m_bAllSelected)
+        SetDlgItemText(IDC_BTN_SELECT_ALL, L"전체 해제");
+    else
+        SetDlgItemText(IDC_BTN_SELECT_ALL, L"전체 선택");
 }

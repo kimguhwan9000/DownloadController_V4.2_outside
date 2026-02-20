@@ -12,6 +12,10 @@
 UINT UploadThreadProc(LPVOID pParam);
 UINT DownloadThreadProc(LPVOID pParam);
 
+
+
+
+
 struct DownloadRequest {
 	HWND hMainWnd;
 	std::wstring source;
@@ -34,6 +38,7 @@ class Ckpaxkkk01Dlg : public CDialogEx
 // 생성입니다.
 public:
 	Ckpaxkkk01Dlg(CWnd* pParent = nullptr);	// 표준 생성자입니다.
+	BOOL m_bAllSelected; // 초기값은 FALSE로 설정할 겁니다.
 	HANDLE m_hSemaphore; // 👈 반드시 클래스 내부에 선언하세요.
 
 	CStatusBar m_StatusBar; // 상태바 객체
@@ -71,6 +76,7 @@ protected:
 	afx_msg LRESULT OnUpdateProgress(WPARAM wp, LPARAM lp);
 	afx_msg LRESULT OnDownloadComplete(WPARAM wp, LPARAM lp);
 	afx_msg void OnBnClickedBtnDownloadSelected();
+	afx_msg void OnBnClickedBtnSelectAll();
 public:
 	afx_msg void OnBnClickedBtnStart();
 	CListCtrl m_ListCtrl;
