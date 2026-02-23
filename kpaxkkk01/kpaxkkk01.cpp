@@ -40,6 +40,12 @@ Ckpaxkkk01App theApp;
 
 BOOL Ckpaxkkk01App::InitInstance()
 {
+	LPWSTR lpCmdLine = GetCommandLineW(); // 윈도우 전체 명령줄을 가져옴
+
+	// 만약 kpax:// 라는 글자가 조금이라도 포함되어 있다면 무조건 알림창을 띄워라!
+	//if (wcsstr(lpCmdLine, L"kpax://") != NULL) {
+	//	::MessageBoxW(NULL, lpCmdLine, L"[긴급] 신호 포착됨!", MB_OK | MB_TOPMOST);
+	//}
 	// Windows XP에서는 InitCommonControlsEx()를 필요로 합니다.
 	// 사용하도록 지정하는 경우, Windows XP 상에서 반드시 InitCommonControlsEx()가 필요합니다.
 	// InitCommonControlsEx()를 사용하지 않으면 창을 만들 수 없습니다.

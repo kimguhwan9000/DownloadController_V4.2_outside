@@ -5,6 +5,9 @@
 #include "kpaxkkk01.h"
 #include "kpaxkkk01Dlg.h"
 #include "afxdialogex.h"
+#include <shlwapi.h>
+#pragma comment(lib, "shlwapi.lib")
+#include <vector>
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -301,6 +304,201 @@ UINT DownloadThreadProc(LPVOID pParam) {
 }
 
 
+// [추가] 윈도우 레지스트리에 내 프로그램(kpax://) 등록하기!
+void RegisterURIScheme() {
+    TCHAR szExePath[MAX_PATH];
+    GetModuleFileName(NULL, szExePath, MAX_PATH); // 내 프로그램의 현재 위치 가져오기
+
+    // 관리자 권한이 필요 없는 HKEY_CURRENT_USER 영역에 등록합니다.
+    CString strKey = L"Software\\Classes\\kpax";
+    HKEY hKey;
+    if (RegCreateKeyEx(HKEY_CURRENT_USER, strKey, 0, NULL, REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, &hKey, NULL) == ERROR_SUCCESS) {
+        CString strProtocol = L"URL:Kpax Protocol";
+        RegSetValueEx(hKey, NULL, 0, REG_SZ, (const BYTE*)strProtocol.GetString(), (strProtocol.GetLength() + 1) * sizeof(TCHAR));
+        RegSetValueEx(hKey, L"URL Protocol", 0, REG_SZ, (const BYTE*)L"", sizeof(TCHAR));
+
+        HKEY hCmdKey;
+        CString strCmdKey = strKey + L"\\shell\\open\\command";
+        if (RegCreateKeyEx(HKEY_CURRENT_USER, strCmdKey, 0, NULL, REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, &hCmdKey, NULL) == ERROR_SUCCESS) {
+            CString strCommand;
+            strCommand.Format(L"\"%s\" \"%%1\"", szExePath); // 프로그램 경로 "%1" 형태로 등록
+            RegSetValueEx(hCmdKey, NULL, 0, REG_SZ, (const BYTE*)strCommand.GetString(), (strCommand.GetLength() + 1) * sizeof(TCHAR));
+            RegCloseKey(hCmdKey);
+        }
+        RegCloseKey(hKey);
+    }
+}
+
+
+
+//BOOL Ckpaxkkk01Dlg::OnInitDialog() {
+//    CDialogEx::OnInitDialog();
+//
+//    SetIcon(m_hIcon, TRUE);
+//    SetIcon(m_hIcon, FALSE);
+//
+//    // 1. 초기 설정
+//    //m_hSemaphore = CreateSemaphore(NULL, 10, 10, NULL);
+//    m_hSemaphore = CreateSemaphore(NULL, 2, 2, NULL);
+//
+//    // LVS_EX_CHECKBOXES 스타일 추가
+//    m_ListCtrl.SetExtendedStyle(LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER | LVS_EX_CHECKBOXES);
+//
+//    // LVS_EX_CHECKBOXES 가 누락되면 GetCheck가 절대 작동하지 않습니다.
+//    DWORD dwExStyle = LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_CHECKBOXES | LVS_EX_DOUBLEBUFFER;
+//    m_ListCtrl.SetExtendedStyle(dwExStyle);
+//
+//    m_ListCtrl.InsertColumn(0, L"파일명", LVCFMT_LEFT, 180);
+//    m_ListCtrl.InsertColumn(1, L"진행률", LVCFMT_CENTER, 100);
+//    m_ListCtrl.InsertColumn(2, L"상태", LVCFMT_LEFT, 220);
+//
+//    DragAcceptFiles(TRUE);
+//    ChangeWindowMessageFilter(WM_DROPFILES, MSGFLT_ADD);
+//    ChangeWindowMessageFilter(0x0049, MSGFLT_ADD);
+//
+//    // 2. 상태바 생성
+//    static UINT indicators[] = { ID_SEPARATOR };
+//    if (m_StatusBar.Create(this)) {
+//        m_StatusBar.SetIndicators(indicators, 1);
+//        RepositionBars(AFX_IDW_CONTROLBAR_FIRST, AFX_IDW_CONTROLBAR_LAST, 0);
+//    }
+//
+//    UpdateTotalStatus();
+//
+//
+//    // ... 기존 경로 설정 코드 바로 아래 ...
+//   // [여기에 넣으세요!] 기존 경로 설정 코드 바로 아래입니다.
+//    m_strDownloadPath = L"C:\\Test";
+//    SetDlgItemText(IDC_EDIT_PATH, m_strDownloadPath);
+//
+//    // ==========================================================================
+//    // 1. 레지스트리 자동 등록 (프로그램 실행될 때마다 최신 경로로 갱신)
+//    RegisterURIScheme();
+//
+//    // 2. 브라우저가 던져준 "쪽지(파일명)" 낚아채기
+//    CString strCmdLine = AfxGetApp()->m_lpCmdLine;
+//
+//    if (!strCmdLine.IsEmpty()) {
+//        // [디버깅] 도대체 어떤 글자가 오는지 궁금하다면 아래 주석을 푸세요
+//        // AfxMessageBox(L"수신된 데이터: " + strCmdLine);
+//
+//        strCmdLine.TrimLeft();
+//        strCmdLine.TrimRight();
+//        strCmdLine.Remove('\"'); // 따옴표 제거
+//
+//        CString strPrefix = L"kpax://";
+//        // 'kpax://' 라는 글자가 어디에 있는지 찾습니다.
+//        int nPos = strCmdLine.Find(strPrefix);
+//
+//        if (nPos != -1) {
+//            // 접두사 이후의 글자(인코딩된 파일명)만 추출
+//            CString strEncoded = strCmdLine.Mid(nPos + strPrefix.GetLength());
+//            strEncoded.TrimRight(L"/"); // 끝에 붙은 슬래시 제거
+//
+//            // 3. 브라우저 외계어(%EB%93%9C...)를 한글로 번역
+//            TCHAR szDecoded[MAX_PATH] = { 0 };
+//            DWORD dwSize = MAX_PATH;
+//            UrlUnescape((LPTSTR)(LPCTSTR)strEncoded, szDecoded, &dwSize, URL_UNESCAPE_INPLACE);
+//
+//            CString strFileName(szDecoded);
+//
+//            if (!strFileName.IsEmpty()) {
+//                // 4. 리스트 컨트롤에 즉시 추가
+//                int nIdx = m_ListCtrl.InsertItem(m_ListCtrl.GetItemCount(), strFileName);
+//                m_ListCtrl.SetItemText(nIdx, 1, L"0%");
+//                m_ListCtrl.SetItemText(nIdx, 2, L"연결 중...");
+//
+//                // 5. 실제 다운로드 스레드 가동
+//                CreateDirectory(m_strDownloadPath, NULL);
+//                CString strSavePath = m_strDownloadPath + L"\\" + strFileName;
+//
+//                DownloadRequest* pReq = new DownloadRequest();
+//                pReq->hMainWnd = this->GetSafeHwnd();
+//                pReq->nItemIndex = nIdx;
+//                pReq->source = (LPCTSTR)strFileName;
+//                pReq->target = (LPCTSTR)strSavePath;
+//                pReq->nTotalBytes = 0;
+//                pReq->nLastBytes = 0;
+//                pReq->nLastPercent = -1;
+//                pReq->dwLastTick = GetTickCount();
+//                pReq->dwSpeedTick = GetTickCount();
+//
+//                AfxBeginThread(FtpDownloadThreadProc, pReq);
+//            }
+//        }
+//    }
+//    // ... 이 아래는 원래 있던 return TRUE; ...
+//
+//    return TRUE;  // return TRUE unless you set the focus to a control
+//}
+
+
+
+//
+//BOOL Ckpaxkkk01Dlg::OnInitDialog() {
+//    CDialogEx::OnInitDialog();
+//
+//    SetIcon(m_hIcon, TRUE);
+//    SetIcon(m_hIcon, FALSE);
+//
+//    // 1. 리스트 컨트롤 초기화 (이게 무조건 1등이어야 합니다)
+//    DWORD dwExStyle = LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_CHECKBOXES | LVS_EX_DOUBLEBUFFER;
+//    m_ListCtrl.SetExtendedStyle(dwExStyle);
+//
+//    m_ListCtrl.InsertColumn(0, L"파일명", LVCFMT_LEFT, 180);
+//    m_ListCtrl.InsertColumn(1, L"진행률", LVCFMT_CENTER, 100);
+//    m_ListCtrl.InsertColumn(2, L"상태", LVCFMT_LEFT, 220);
+//
+//    // 2. 기본 경로 설정
+//    m_strDownloadPath = L"C:\\Test";
+//    SetDlgItemText(IDC_EDIT_PATH, m_strDownloadPath);
+//
+//    // [kpaxkkk01Dlg.cpp] OnInitDialog 내부의 웹 처리 로직 교체
+//    RegisterURIScheme();
+//
+//    // 1. 윈도우가 보낸 "원본 생 데이터"를 가져옵니다.
+//    CString strRawCmd = GetCommandLine();
+//
+//    // 2. [가장 중요] 눈으로 확인해봅시다.
+//    // 이 창이 뜨는데 목록이 안 뜨는 건지, 이 창 자체가 안 뜨는 건지 알려주세요!
+//    AfxMessageBox(L"수신된 전체 데이터: " + strRawCmd);
+//
+//    int nPos = strRawCmd.Find(L"kpax://");
+//    CString strFileName = L"";
+//
+//    if (nPos != -1) {
+//        // kpax:// 이후를 잘라냄
+//        strFileName = strRawCmd.Mid(nPos + 7);
+//        strFileName.Remove('\"'); // 따옴표 제거
+//        strFileName.TrimRight(L"/ "); // 슬래시와 공백 제거
+//
+//        // 한글 번역 시도
+//        TCHAR szDecoded[MAX_PATH] = { 0 };
+//        DWORD dwSize = MAX_PATH;
+//        UrlUnescape((LPTSTR)(LPCTSTR)strFileName, szDecoded, &dwSize, URL_UNESCAPE_INPLACE);
+//        if (_tcslen(szDecoded) > 0) strFileName = szDecoded;
+//    }
+//    else {
+//        // 만약 kpax:// 를 못 찾았다면, 원본이라도 넣어서 목록을 띄웁니다.
+//        strFileName = L"알 수 없는 호출: " + strRawCmd;
+//    }
+//
+//    // 3. 리스트 컨트롤에 강제 삽입
+//    if (m_ListCtrl.GetSafeHwnd()) {
+//        int nIdx = m_ListCtrl.InsertItem(m_ListCtrl.GetItemCount(), strFileName);
+//        m_ListCtrl.SetItemText(nIdx, 1, L"대기 중");
+//        m_ListCtrl.SetItemText(nIdx, 2, L"웹 호출 확인됨");
+//    }
+//    else {
+//        // 만약 리스트 컨트롤 자체가 준비 안 됐다면 이 메시지가 뜹니다.
+//        AfxMessageBox(L"에러: 리스트 컨트롤 변수가 연결되지 않았습니다!");
+//    }
+//    UpdateTotalStatus();
+//    return TRUE;
+//}
+
+
+#include <vector> // 파일 맨 위에 이 줄이 있는지 확인하세요!
 
 BOOL Ckpaxkkk01Dlg::OnInitDialog() {
     CDialogEx::OnInitDialog();
@@ -308,41 +506,89 @@ BOOL Ckpaxkkk01Dlg::OnInitDialog() {
     SetIcon(m_hIcon, TRUE);
     SetIcon(m_hIcon, FALSE);
 
-    // 1. 초기 설정
-    //m_hSemaphore = CreateSemaphore(NULL, 10, 10, NULL);
-    m_hSemaphore = CreateSemaphore(NULL, 2, 2, NULL);
-
-    // LVS_EX_CHECKBOXES 스타일 추가
-    m_ListCtrl.SetExtendedStyle(LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER | LVS_EX_CHECKBOXES);
-
-    // LVS_EX_CHECKBOXES 가 누락되면 GetCheck가 절대 작동하지 않습니다.
+    // 1. 리스트 컨트롤 초기화
     DWORD dwExStyle = LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_CHECKBOXES | LVS_EX_DOUBLEBUFFER;
     m_ListCtrl.SetExtendedStyle(dwExStyle);
 
-    m_ListCtrl.InsertColumn(0, L"파일명", LVCFMT_LEFT, 180);
+    m_ListCtrl.InsertColumn(0, L"파일명", LVCFMT_LEFT, 250);
     m_ListCtrl.InsertColumn(1, L"진행률", LVCFMT_CENTER, 100);
-    m_ListCtrl.InsertColumn(2, L"상태", LVCFMT_LEFT, 220);
+    m_ListCtrl.InsertColumn(2, L"상태", LVCFMT_LEFT, 200);
 
-    DragAcceptFiles(TRUE);
-    ChangeWindowMessageFilter(WM_DROPFILES, MSGFLT_ADD);
-    ChangeWindowMessageFilter(0x0049, MSGFLT_ADD);
+    m_strDownloadPath = L"C:\\Test";
+    SetDlgItemText(IDC_EDIT_PATH, m_strDownloadPath);
 
-    // 2. 상태바 생성
-    static UINT indicators[] = { ID_SEPARATOR };
-    if (m_StatusBar.Create(this)) {
-        m_StatusBar.SetIndicators(indicators, 1);
-        RepositionBars(AFX_IDW_CONTROLBAR_FIRST, AFX_IDW_CONTROLBAR_LAST, 0);
+    RegisterURIScheme();
+
+    // 2. 명령줄 데이터 가져오기
+    CString strRawCmd = GetCommandLine();
+    int nPos = strRawCmd.Find(L"kpax://");
+    CString strFileName = L"";
+
+    if (nPos != -1) {
+        CString strEncoded = strRawCmd.Mid(nPos + 7);
+        strEncoded.Remove('\"');
+        strEncoded.TrimRight(L"/ ");
+
+        // --- [물리적 디코딩 시작] ---
+        std::vector<char> utf8Bytes;
+        for (int i = 0; i < strEncoded.GetLength(); ++i) {
+            if (strEncoded[i] == '%') {
+                int value;
+                // % 뒤의 두 글자를 16진수 숫자로 변환
+                if (swscanf_s(strEncoded.Mid(i + 1, 2), L"%x", &value) == 1) {
+                    utf8Bytes.push_back((char)value);
+                    i += 2;
+                }
+            }
+            else {
+                // 일반 영문자 처리
+                utf8Bytes.push_back((char)strEncoded[i]);
+            }
+        }
+        utf8Bytes.push_back('\0'); // 문자열 끝 표시
+
+        // 3. 복원된 UTF-8 바이트를 유니코드로 정밀 변환
+        if (!utf8Bytes.empty()) {
+            int nUniLen = MultiByteToWideChar(CP_UTF8, 0, utf8Bytes.data(), -1, NULL, 0);
+            if (nUniLen > 0) {
+                std::vector<wchar_t> uniBuf(nUniLen);
+                MultiByteToWideChar(CP_UTF8, 0, utf8Bytes.data(), -1, uniBuf.data(), nUniLen);
+                strFileName = uniBuf.data(); // 드디어 깨끗한 한글 복원!
+            }
+        }
+        // -----------------------------
+
+        if (strFileName.IsEmpty()) strFileName = strEncoded;
+    }
+    else {
+        UpdateTotalStatus();
+        return TRUE;
+    }
+
+    // 4. 리스트 컨트롤 삽입 및 다운로드 실행
+    if (m_ListCtrl.GetSafeHwnd() && !strFileName.IsEmpty()) {
+        int nIdx = m_ListCtrl.InsertItem(m_ListCtrl.GetItemCount(), strFileName);
+        m_ListCtrl.SetItemText(nIdx, 1, L"0%");
+        m_ListCtrl.SetItemText(nIdx, 2, L"전송 연결 중...");
+
+        CreateDirectory(m_strDownloadPath, NULL);
+        CString strSavePath = m_strDownloadPath + L"\\" + strFileName;
+
+        DownloadRequest* pReq = new DownloadRequest();
+        pReq->hMainWnd = this->GetSafeHwnd();
+        pReq->nItemIndex = nIdx;
+        pReq->source = (LPCTSTR)strFileName;
+        pReq->target = (LPCTSTR)strSavePath;
+        pReq->nTotalBytes = 0; pReq->nLastBytes = 0; pReq->nLastPercent = -1;
+        pReq->dwLastTick = GetTickCount(); pReq->dwSpeedTick = GetTickCount();
+
+        AfxBeginThread(FtpDownloadThreadProc, pReq);
     }
 
     UpdateTotalStatus();
-
-
-
-    // 초기 기본 경로 설정
-    m_strDownloadPath = L"C:\\Test";
-    SetDlgItemText(IDC_EDIT_PATH, m_strDownloadPath);
     return TRUE;
 }
+
 
 // [상태바 및 제목줄 업데이트 함수]
 void Ckpaxkkk01Dlg::UpdateTotalStatus() {

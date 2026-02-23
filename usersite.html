@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KPAX 전송 센터</title>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; padding: 20px; line-height: 1.6; background-color: #f4f7f9; }
+        .container { max-width: 500px; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h2 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+        .download-item { margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between; }
+        .btn-download { 
+            background-color: #007bff; color: white; border: none; padding: 8px 15px; 
+            border-radius: 5px; cursor: pointer; transition: background 0.3s;
+        }
+        .btn-download:hover { background-color: #0056b3; }
+        .english-link { color: #666; text-decoration: none; font-size: 0.9em; }
+        .english-link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>📦 KPAX 전송 센터</h2>
+
+    <div style="margin-bottom: 20px;">
+        <a href="kpax://kpax.txt" class="english-link">📄 영어 파일 테스트 (kpax.txt)</a>
+    </div>
+
+    <div class="download-item">
+        <span>🎬 드래곤볼 131편</span>
+        <button class="btn-download" onclick="downloadFile('드래곤볼 오리지널 ep131.avi')">다운로드</button>
+    </div>
+
+    <div class="download-item">
+        <span>🎬 드래곤볼 126편</span>
+        <button class="btn-download" onclick="downloadFile('드래곤볼 오리지널 ep126.avi')">다운로드</button>
+    </div>
+
+    <div class="download-item">
+        <span>🎬 드래곤볼 129편</span>
+        <button class="btn-download" onclick="downloadFile('드래곤볼 오리지널 ep129.avi')">다운로드</button>
+    </div>
+</div>
+
+<script>
+    function downloadFile(fileName) {
+        // encodeURIComponent로 한글 파일명을 안전하게 인코딩 (UTF-8)
+        const encodedName = encodeURIComponent(fileName);
+        
+        // C++ 프로그램으로 URI 스킴 전송
+        window.location.href = "kpax://" + encodedName;
+    }
+</script>
+
+</body>
+</html>
