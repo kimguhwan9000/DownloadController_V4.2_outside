@@ -1,5 +1,7 @@
-﻿#include "pch.h"
+﻿#include "pch.h" // 무조건 1등으로 와야 합니다!
 #include "framework.h"
+#include <afxinet.h> // 인터넷 통신 헤더는 여기에!
+#include "afxdialogex.h"
 #include "kpaxkkk01.h"
 #include "kpaxkkk01Dlg.h"
 #include "afxdialogex.h"
@@ -30,6 +32,8 @@ CString GetErrorMessageKorean(DWORD dwErrorCode) {
     if (dwErrorCode == 32) strError = L"다른 프로그램이 사용 중입니다.";
     return strError;
 }
+
+
 
 // CAboutDlg 대화 상자 (기본 생성 코드)
 class CAboutDlg : public CDialogEx {
@@ -170,6 +174,124 @@ UINT UploadThreadProc(LPVOID pParam) {
     delete pReq;
     return 0;
 }
+
+
+// [새로 추가] 웹하드(FTP) 다운로드 엔진 (한글 인코딩 완벽 우회 + 윈도우 코어 API 직결 버전)
+UINT FtpDownloadThreadProc(LPVOID pParam) {
+    DownloadRequest* pReq = (DownloadRequest*)pParam;
+    if (pReq == NULL) return 0;
+
+    Ckpaxkkk01Dlg* pMain = (Ckpaxkkk01Dlg*)CWnd::FromHandle(pReq->hMainWnd);
+
+    // 세마포어 대기
+    WaitForSingleObject(pMain->m_hSemaphore, INFINITE);
+
+    pReq->dwLastTick = GetTickCount();
+    pReq->dwSpeedTick = GetTickCount();
+    pReq->nLastBytes = 0;
+    pReq->nLastPercent = -1;
+    pReq->nTotalBytes = 0;
+
+    BOOL bResult = FALSE;
+
+    CInternetSession session(_T("KpaxWebHardClient"));
+    CFtpConnection* pFtpConn = NULL;
+    CFile localFile; // (주의: CInternetFile은 아예 지웠습니다!)
+
+    try {
+        // 1. 서버에 로그인 (패시브 모드)
+        pFtpConn = session.GetFtpConnection(_T("127.0.0.1"), _T("friend"), _T("1111"), 21, TRUE);
+
+        // 파일질라에게 UTF-8을 쓰겠다고 선언
+        pFtpConn->Command(_T("OPTS UTF8 ON"));
+
+        // ==========================================================
+        // [초강력 핵심] 파일명을 진짜 UTF-8 바이트(char 배열)로 직접 변환!
+        CString strFileName = pReq->source.c_str();
+        int utf8Len = WideCharToMultiByte(CP_UTF8, 0, strFileName, -1, NULL, 0, NULL, NULL);
+        char* pUtf8Name = new char[utf8Len];
+        WideCharToMultiByte(CP_UTF8, 0, strFileName, -1, pUtf8Name, utf8Len, NULL, NULL);
+
+        // 윈도우 원시 API를 직접 호출하여 UTF-8 바이트를 서버에 그대로 꽂아버림!
+        HINTERNET hFtpFile = ::FtpOpenFileA((HINTERNET)*pFtpConn, pUtf8Name, GENERIC_READ, FTP_TRANSFER_TYPE_BINARY | INTERNET_FLAG_PASSIVE, 0);
+        delete[] pUtf8Name;
+        // ==========================================================
+
+        if (hFtpFile != NULL) {
+            // 2. 파일 용량 알아내기
+            DWORD dwFileSizeHigh = 0;
+            DWORD dwFileSizeLow = ::FtpGetFileSize(hFtpFile, &dwFileSizeHigh);
+            pReq->nTotalBytes = ((ULONGLONG)dwFileSizeHigh << 32) | dwFileSizeLow;
+
+            // 3. 내 컴퓨터에 파일 쓰기 시작
+            if (localFile.Open(pReq->target.c_str(), CFile::modeCreate | CFile::modeWrite | CFile::typeBinary)) {
+
+                // 4. 다운로드 루프 (64KB 단위) - 껍데기를 버리고 API로 직접 읽기!
+                const DWORD BUFFER_SIZE = 64 * 1024;
+                BYTE* buffer = new BYTE[BUFFER_SIZE];
+                DWORD bytesRead = 0;
+                ULONGLONG totalDownloaded = 0;
+
+                // [핵심 변경] ::InternetReadFile 코어 API 사용!
+                while (::InternetReadFile(hFtpFile, buffer, BUFFER_SIZE, &bytesRead) && bytesRead > 0) {
+                    localFile.Write(buffer, bytesRead);
+                    totalDownloaded += bytesRead;
+
+                    DWORD dwCurrentTick = GetTickCount();
+
+                    // 속도 및 ETA 계산
+                    if (dwCurrentTick - pReq->dwSpeedTick >= 1000) {
+                        double diff = (double)(totalDownloaded - pReq->nLastBytes);
+                        double mbps = diff / (1024.0 * 1024.0);
+                        int eta = 0;
+                        if (diff > 0 && pReq->nTotalBytes > 0) {
+                            eta = (int)((pReq->nTotalBytes - totalDownloaded) / diff);
+                        }
+                        WPARAM wp = MAKEWPARAM((WORD)(mbps * 10), (WORD)eta);
+                        ::PostMessage(pReq->hMainWnd, WM_UPDATE_SPEED, wp, (LPARAM)pReq->nItemIndex);
+
+                        pReq->dwSpeedTick = dwCurrentTick;
+                        pReq->nLastBytes = totalDownloaded;
+                    }
+
+                    // 진행률 업데이트
+                    if (pReq->nTotalBytes > 0) {
+                        int percent = (int)((double)totalDownloaded / (double)pReq->nTotalBytes * 100);
+                        if (percent > pReq->nLastPercent) {
+                            pReq->nLastPercent = percent;
+                            ::PostMessage(pReq->hMainWnd, WM_UPDATE_PROGRESS, (WPARAM)percent, (LPARAM)pReq->nItemIndex);
+                        }
+                    }
+                }
+                delete[] buffer;
+                bResult = TRUE;
+                localFile.Close();
+            }
+            // 코어 핸들 닫기
+            ::InternetCloseHandle(hFtpFile);
+        }
+    }
+    catch (CInternetException* pEx) {
+        TCHAR szErr[1024];
+        pEx->GetErrorMessage(szErr, 1024);
+        OutputDebugString(szErr);
+        pEx->Delete();
+    }
+
+    // 5. 연결 종료
+    if (pFtpConn != NULL) {
+        pFtpConn->Close();
+        delete pFtpConn;
+    }
+    session.Close();
+
+    ::PostMessage(pReq->hMainWnd, WM_DOWNLOAD_COMPLETE, (WPARAM)bResult, (LPARAM)pReq->nItemIndex);
+    ReleaseSemaphore(pMain->m_hSemaphore, 1, NULL);
+
+    delete pReq;
+    return 0;
+}
+
 
 // [추가] 실제 다운로드 파일 복사를 수행하는 워커 스레드 함수
 UINT DownloadThreadProc(LPVOID pParam) {
@@ -500,7 +622,8 @@ void Ckpaxkkk01Dlg::OnBnClickedBtnStart()
     CFileFind finder;
     // 서버의 공유 폴더 경로 (실제 경로로 수정하세요)
     //CString strServerPath = L"C:\\Test\\*.*";
-    CString strServerPath = L"H:\\PC2 2TB HDD 자료\\영화,드라마,애니메이션\\마쇼파일\\애니메이션, 전대물\\하울의움직이는성 (2004)\\*.*";
+    //CString strServerPath = L"H:\\PC2 2TB HDD 자료\\영화,드라마,애니메이션\\마쇼파일\\애니메이션, 전대물\\하울의움직이는성 (2004)\\*.*";
+    CString strServerPath = L"D:\\드래곤볼 시리즈\\오리지널 (1986)\\(오덕) 드래곤볼 오리지널 121-140화  한글자막.ㅋ\\*.*";
     //H:\PC2 2TB HDD 자료\영화,드라마,애니메이션\마쇼파일\애니메이션, 전대물\나루토 (2002)
 
     BOOL bWorking = finder.FindFile(strServerPath);
@@ -568,17 +691,11 @@ void Ckpaxkkk01Dlg::OnBnClickedBtnDownloadSelected()
             pReq->hMainWnd = this->GetSafeHwnd();
             pReq->nItemIndex = i;
 
-            // 경로 문자열 생성
-            CString strBase = L"H:\\PC2 2TB HDD 자료\\영화,드라마,애니메이션\\마쇼파일\\애니메이션, 전대물\\하울의움직이는성 (2004)\\";
-            CString strFullSource = strBase + strFileName;
-            //CString strFullTarget = L"C:\\Test\\" + strFileName;
-
-
             // 1. Edit Control에 적힌 현재 경로를 가져옵니다.
             CString strSelectedPath;
-            GetDlgItemText(IDC_EDIT_PATH, strSelectedPath); // ID를 직접 지정해서 값을 가져옴
+            GetDlgItemText(IDC_EDIT_PATH, strSelectedPath);
 
-            // 2. 경로 끝에 역슬래시(\)가 있는지 확인하고 보정합니다. (매우 중요!)
+            // 2. 경로 끝에 역슬래시(\)가 있는지 확인하고 보정합니다.
             if (strSelectedPath.Right(1) != L"\\") {
                 strSelectedPath += L"\\";
             }
@@ -588,14 +705,11 @@ void Ckpaxkkk01Dlg::OnBnClickedBtnDownloadSelected()
                 CreateDirectory(strSelectedPath, NULL);
             }
 
-            // ... 루프(for문) 안에서 ...
-
-            // 4. [변경 핵심] 고정 경로 대신 strSelectedPath 변수를 사용합니다.
+            // 4. [수정 완료] 중복 선언 제거 및 경로 설정
             CString strFullTarget = strSelectedPath + strFileName;
 
-            // [핵심] 포인터가 아니라 실제 값을 복사해서 스레드에 넘김
-            pReq->source = (LPCTSTR)strFullSource;
-            pReq->target = (LPCTSTR)strFullTarget;
+            pReq->source = (LPCTSTR)strFileName;   // FTP 서버는 파일명만 필요함
+            pReq->target = (LPCTSTR)strFullTarget; // 내 컴퓨터에 저장될 최종 경로
 
             pReq->nTotalBytes = 0;
             pReq->nLastBytes = 0;
@@ -605,9 +719,8 @@ void Ckpaxkkk01Dlg::OnBnClickedBtnDownloadSelected()
 
             m_ListCtrl.SetItemText(i, 2, L"전송 시작 중...");
 
-            // [주의] 딱 한 번만 호출하세요! 
-            // 이전에 아래쪽에 다른 AfxBeginThread가 남아있다면 반드시 지우세요.
-            AfxBeginThread(UploadThreadProc, pReq);
+            // FTP 전용 스레드 호출
+            AfxBeginThread(FtpDownloadThreadProc, pReq);
         }
     }
 
