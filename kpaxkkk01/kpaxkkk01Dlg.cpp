@@ -210,11 +210,11 @@ UINT FtpDownloadThreadProc(LPVOID pParam) {
                 strIP = _T("127.0.0.1");
         #else
                 // 릴리즈 모드(친구에게 줄 배포판)에서는 공인 IP로 접속
-                strIP = _T("193.186.4.167"); // 여기에 본인의 공인 IP 입력
+                strIP = _T("125.188.38.149"); // 여기에 본인의 공인 IP 입력
         #endif
 
         // 1. 서버에 로그인 (패시브 모드)
-        pFtpConn = session.GetFtpConnection(strIP, _T("friend"), _T("1111"), 21, TRUE);
+        pFtpConn = session.GetFtpConnection(strIP, _T("friend"), _T("1111"), 2121, TRUE);
 
         // 파일질라에게 UTF-8을 쓰겠다고 선언
         pFtpConn->Command(_T("OPTS UTF8 ON"));
