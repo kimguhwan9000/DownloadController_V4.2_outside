@@ -202,8 +202,19 @@ UINT FtpDownloadThreadProc(LPVOID pParam) {
     CFile localFile; // (주의: CInternetFile은 아예 지웠습니다!)
 
     try {
+
+        CString strIP;
+
+        // 디버그 모드(F5)로 실행할 때는 내 컴퓨터(로컬)로 접속
+        #ifdef _DEBUG
+                strIP = _T("127.0.0.1");
+        #else
+                // 릴리즈 모드(친구에게 줄 배포판)에서는 공인 IP로 접속
+                strIP = _T("193.186.4.167"); // 여기에 본인의 공인 IP 입력
+        #endif
+
         // 1. 서버에 로그인 (패시브 모드)
-        pFtpConn = session.GetFtpConnection(_T("127.0.0.1"), _T("friend"), _T("1111"), 21, TRUE);
+        pFtpConn = session.GetFtpConnection(strIP, _T("friend"), _T("1111"), 21, TRUE);
 
         // 파일질라에게 UTF-8을 쓰겠다고 선언
         pFtpConn->Command(_T("OPTS UTF8 ON"));
