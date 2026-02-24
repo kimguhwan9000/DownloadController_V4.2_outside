@@ -178,6 +178,87 @@ UINT UploadThreadProc(LPVOID pParam) {
     return 0;
 }
 
+// [새로 추가] 서버로 파일을 쏘아올리는 FTP 업로드 엔진
+UINT FtpUploadThreadProc(LPVOID pParam) {
+    DownloadRequest* pReq = (DownloadRequest*)pParam;
+    if (pReq == NULL) return 0;
+
+    Ckpaxkkk01Dlg* pMain = (Ckpaxkkk01Dlg*)CWnd::FromHandle(pReq->hMainWnd);
+    WaitForSingleObject(pMain->m_hSemaphore, INFINITE);
+
+    pReq->dwLastTick = GetTickCount();
+    pReq->dwSpeedTick = GetTickCount();
+    pReq->nLastBytes = 0;
+    pReq->nLastPercent = -1;
+
+    BOOL bResult = FALSE;
+    CInternetSession session(_T("KpaxWebHardClient"));
+    CFtpConnection* pFtpConn = NULL;
+
+    try {
+        CString strIP = _T("125.188.38.149"); // 서버 공인 IP
+        pFtpConn = session.GetFtpConnection(strIP, _T("friend"), _T("1111"), 2121, TRUE);
+        pFtpConn->Command(_T("OPTS UTF8 ON"));
+
+        // 로컬 파일 열기 (업로드할 파일)
+        CFile localFile;
+        if (localFile.Open(pReq->source.c_str(), CFile::modeRead | CFile::typeBinary)) {
+            pReq->nTotalBytes = localFile.GetLength();
+
+            // 서버에 생성될 파일명 (UTF-8 처리)
+            CString strDestName = pReq->target.c_str(); // 파일명만 들어있어야 함
+            int utf8Len = WideCharToMultiByte(CP_UTF8, 0, strDestName, -1, NULL, 0, NULL, NULL);
+            char* pUtf8Name = new char[utf8Len];
+            WideCharToMultiByte(CP_UTF8, 0, strDestName, -1, pUtf8Name, utf8Len, NULL, NULL);
+
+            // 서버 파일 열기 (쓰기 모드)
+            HINTERNET hFtpFile = ::FtpOpenFileA((HINTERNET)*pFtpConn, pUtf8Name, GENERIC_WRITE, FTP_TRANSFER_TYPE_BINARY | INTERNET_FLAG_PASSIVE, 0);
+            delete[] pUtf8Name;
+
+            if (hFtpFile != NULL) {
+                const DWORD BUFFER_SIZE = 64 * 1024;
+                BYTE* buffer = new BYTE[BUFFER_SIZE];
+                DWORD bytesWritten = 0;
+                ULONGLONG totalUploaded = 0;
+                UINT readCount = 0;
+
+                while ((readCount = localFile.Read(buffer, BUFFER_SIZE)) > 0) {
+                    if (::InternetWriteFile(hFtpFile, buffer, readCount, &bytesWritten)) {
+                        totalUploaded += bytesWritten;
+
+                        // UI 업데이트 (속도/진행률) 로직은 다운로드와 동일하게 적용
+                        DWORD dwCurrentTick = GetTickCount();
+                        if (dwCurrentTick - pReq->dwSpeedTick >= 1000) {
+                            double mbps = (double)(totalUploaded - pReq->nLastBytes) / (1024.0 * 1024.0);
+                            ::PostMessage(pReq->hMainWnd, WM_UPDATE_SPEED, MAKEWPARAM((WORD)(mbps * 10), 0), (LPARAM)pReq->nItemIndex);
+                            pReq->dwSpeedTick = dwCurrentTick;
+                            pReq->nLastBytes = totalUploaded;
+                        }
+                        int percent = (int)((double)totalUploaded / (double)pReq->nTotalBytes * 100);
+                        if (percent > pReq->nLastPercent) {
+                            pReq->nLastPercent = percent;
+                            ::PostMessage(pReq->hMainWnd, WM_UPDATE_PROGRESS, (WPARAM)percent, (LPARAM)pReq->nItemIndex);
+                        }
+                    }
+                }
+                delete[] buffer;
+                ::InternetCloseHandle(hFtpFile);
+                bResult = TRUE;
+            }
+            localFile.Close();
+        }
+    }
+    catch (CInternetException* pEx) { pEx->Delete(); }
+
+    if (pFtpConn) { pFtpConn->Close(); delete pFtpConn; }
+    session.Close();
+
+    ::PostMessage(pReq->hMainWnd, WM_DOWNLOAD_COMPLETE, (WPARAM)bResult, (LPARAM)pReq->nItemIndex);
+    ReleaseSemaphore(pMain->m_hSemaphore, 1, NULL);
+    delete pReq;
+    return 0;
+}
+
 
 // [새로 추가] 웹하드(FTP) 다운로드 엔진 (한글 인코딩 완벽 우회 + 윈도우 코어 API 직결 버전)
 UINT FtpDownloadThreadProc(LPVOID pParam) {
@@ -678,35 +759,84 @@ LRESULT Ckpaxkkk01Dlg::OnDownloadComplete(WPARAM wp, LPARAM lp) {
     return 0;
 }
 
-// 업로드 버튼 클릭
+// 업로드 버튼 클릭   로컬부분이다~~~~~~~~~~~~~~~~~~~~~~~
+//void Ckpaxkkk01Dlg::OnBnClickedBtnUpload() {
+//    CFileDialog fileDlg(TRUE, NULL, NULL, OFN_FILEMUSTEXIST, L"모든 파일 (*.*)|*.*||");
+//    if (fileDlg.DoModal() == IDOK) {
+//        CString strLocalPath = fileDlg.GetPathName();
+//        CString strFileName = fileDlg.GetFileName();
+//
+//        if (!CreateDirectory(L"C:\\Test", NULL) && GetLastError() != ERROR_ALREADY_EXISTS) return;
+//
+//        std::wstring strServerPath = L"C:\\Test\\" + std::wstring((LPCTSTR)strFileName);
+//
+//        int nIdx = m_ListCtrl.InsertItem(m_ListCtrl.GetItemCount(), strFileName);
+//        m_ListCtrl.SetItemText(nIdx, 1, L"0%");
+//        m_ListCtrl.SetItemText(nIdx, 2, L"업로드 중...");
+//
+//        DownloadRequest* pReq = new DownloadRequest();
+//        pReq->hMainWnd = this->GetSafeHwnd();
+//        pReq->source = (LPCTSTR)strLocalPath;
+//        pReq->target = strServerPath;
+//        pReq->nItemIndex = nIdx;
+//        pReq->nLastPercent = -1;
+//        pReq->dwLastTick = GetTickCount();
+//
+//        AfxBeginThread(UploadThreadProc, pReq);
+//        UpdateTotalStatus();
+//    }
+//}
+
 void Ckpaxkkk01Dlg::OnBnClickedBtnUpload() {
     CFileDialog fileDlg(TRUE, NULL, NULL, OFN_FILEMUSTEXIST, L"모든 파일 (*.*)|*.*||");
     if (fileDlg.DoModal() == IDOK) {
         CString strLocalPath = fileDlg.GetPathName();
         CString strFileName = fileDlg.GetFileName();
 
-        if (!CreateDirectory(L"C:\\Test", NULL) && GetLastError() != ERROR_ALREADY_EXISTS) return;
-
-        std::wstring strServerPath = L"C:\\Test\\" + std::wstring((LPCTSTR)strFileName);
-
         int nIdx = m_ListCtrl.InsertItem(m_ListCtrl.GetItemCount(), strFileName);
         m_ListCtrl.SetItemText(nIdx, 1, L"0%");
-        m_ListCtrl.SetItemText(nIdx, 2, L"업로드 중...");
+        m_ListCtrl.SetItemText(nIdx, 2, L"업로드 준비 중...");
 
         DownloadRequest* pReq = new DownloadRequest();
         pReq->hMainWnd = this->GetSafeHwnd();
-        pReq->source = (LPCTSTR)strLocalPath;
-        pReq->target = strServerPath;
+        pReq->source = (LPCTSTR)strLocalPath; // 내 컴퓨터 경로
+        pReq->target = (LPCTSTR)strFileName;  // 서버에 저장될 이름
         pReq->nItemIndex = nIdx;
-        pReq->nLastPercent = -1;
-        pReq->dwLastTick = GetTickCount();
 
-        AfxBeginThread(UploadThreadProc, pReq);
+        AfxBeginThread(FtpUploadThreadProc, pReq); // FTP 업로드 스레드 실행
         UpdateTotalStatus();
     }
 }
 
-// 드래그 앤 드롭
+// 드래그 앤 드롭  로컬부분이다----------------------
+//void Ckpaxkkk01Dlg::OnDropFiles(HDROP hDropInfo) {
+//    UINT nFiles = DragQueryFile(hDropInfo, 0xFFFFFFFF, NULL, 0);
+//    for (UINT i = 0; i < nFiles; i++) {
+//        TCHAR szFilePath[MAX_PATH];
+//        if (DragQueryFile(hDropInfo, i, szFilePath, MAX_PATH)) {
+//            CString strLocalPath = szFilePath;
+//            CString strFileName = strLocalPath.Mid(strLocalPath.ReverseFind('\\') + 1);
+//            std::wstring strServerPath = L"C:\\Test\\" + std::wstring((LPCTSTR)strFileName);
+//
+//            int nIdx = m_ListCtrl.InsertItem(m_ListCtrl.GetItemCount(), strFileName);
+//            m_ListCtrl.SetItemText(nIdx, 1, L"0%");
+//            m_ListCtrl.SetItemText(nIdx, 2, L"연결 중...");
+//
+//            DownloadRequest* pReq = new DownloadRequest();
+//            pReq->hMainWnd = this->GetSafeHwnd();
+//            pReq->source = (LPCTSTR)strLocalPath;
+//            pReq->target = strServerPath;
+//            pReq->nItemIndex = nIdx;
+//            pReq->nLastPercent = -1;
+//            pReq->dwLastTick = GetTickCount();
+//
+//            AfxBeginThread(UploadThreadProc, pReq);
+//        }
+//    }
+//    DragFinish(hDropInfo);
+//    UpdateTotalStatus();
+//}
+
 void Ckpaxkkk01Dlg::OnDropFiles(HDROP hDropInfo) {
     UINT nFiles = DragQueryFile(hDropInfo, 0xFFFFFFFF, NULL, 0);
     for (UINT i = 0; i < nFiles; i++) {
@@ -714,21 +844,18 @@ void Ckpaxkkk01Dlg::OnDropFiles(HDROP hDropInfo) {
         if (DragQueryFile(hDropInfo, i, szFilePath, MAX_PATH)) {
             CString strLocalPath = szFilePath;
             CString strFileName = strLocalPath.Mid(strLocalPath.ReverseFind('\\') + 1);
-            std::wstring strServerPath = L"C:\\Test\\" + std::wstring((LPCTSTR)strFileName);
 
             int nIdx = m_ListCtrl.InsertItem(m_ListCtrl.GetItemCount(), strFileName);
             m_ListCtrl.SetItemText(nIdx, 1, L"0%");
-            m_ListCtrl.SetItemText(nIdx, 2, L"연결 중...");
+            m_ListCtrl.SetItemText(nIdx, 2, L"업로드 중...");
 
             DownloadRequest* pReq = new DownloadRequest();
             pReq->hMainWnd = this->GetSafeHwnd();
             pReq->source = (LPCTSTR)strLocalPath;
-            pReq->target = strServerPath;
+            pReq->target = (LPCTSTR)strFileName;
             pReq->nItemIndex = nIdx;
-            pReq->nLastPercent = -1;
-            pReq->dwLastTick = GetTickCount();
 
-            AfxBeginThread(UploadThreadProc, pReq);
+            AfxBeginThread(FtpUploadThreadProc, pReq); // FTP 업로드 스레드 실행
         }
     }
     DragFinish(hDropInfo);
@@ -871,34 +998,98 @@ void Ckpaxkkk01Dlg::OnNMRClickListDownload(NMHDR* pNMHDR, LRESULT* pResult)
 }
 
 
-// '시작' 버튼을 눌렀을 때 실행되는 함수
+//로컬 테스트
+//// '시작' 버튼을 눌렀을 때 실행되는 함수
+//void Ckpaxkkk01Dlg::OnBnClickedBtnStart()
+//{
+//    m_ListCtrl.DeleteAllItems(); // 기존 목록 청소
+//
+//    CFileFind finder;
+//    // 서버의 공유 폴더 경로 (실제 경로로 수정하세요)
+//    //CString strServerPath = L"C:\\Test\\*.*";
+//    //CString strServerPath = L"H:\\PC2 2TB HDD 자료\\영화,드라마,애니메이션\\마쇼파일\\애니메이션, 전대물\\하울의움직이는성 (2004)\\*.*";
+//    CString strServerPath = L"D:\\드래곤볼 시리즈\\오리지널 (1986)\\(오덕) 드래곤볼 오리지널 121-140화  한글자막.ㅋ\\*.*";
+//    //H:\PC2 2TB HDD 자료\영화,드라마,애니메이션\마쇼파일\애니메이션, 전대물\나루토 (2002)
+//
+//    BOOL bWorking = finder.FindFile(strServerPath);
+//    while (bWorking) {
+//        bWorking = finder.FindNextFile();
+//
+//        if (finder.IsDots()) continue; // . 이나 .. 폴더 제외
+//        if (finder.IsDirectory()) continue; // 일단 파일만 표시
+//
+//        // 리스트에 파일명 추가
+//        int nIdx = m_ListCtrl.InsertItem(m_ListCtrl.GetItemCount(), finder.GetFileName());
+//        m_ListCtrl.SetItemText(nIdx, 1, L"0%");
+//        m_ListCtrl.SetItemText(nIdx, 2, L"대기 중 (체크 후 다운로드)");
+//    }
+//    finder.Close();
+//
+//    UpdateTotalStatus();
+//}
+
+//파일질라 서버 호출 실제 웹서버를 부르는 화면입니다.
 void Ckpaxkkk01Dlg::OnBnClickedBtnStart()
 {
-    m_ListCtrl.DeleteAllItems(); // 기존 목록 청소
+    m_ListCtrl.DeleteAllItems();
 
-    CFileFind finder;
-    // 서버의 공유 폴더 경로 (실제 경로로 수정하세요)
-    //CString strServerPath = L"C:\\Test\\*.*";
-    //CString strServerPath = L"H:\\PC2 2TB HDD 자료\\영화,드라마,애니메이션\\마쇼파일\\애니메이션, 전대물\\하울의움직이는성 (2004)\\*.*";
-    CString strServerPath = L"D:\\드래곤볼 시리즈\\오리지널 (1986)\\(오덕) 드래곤볼 오리지널 121-140화  한글자막.ㅋ\\*.*";
-    //H:\PC2 2TB HDD 자료\영화,드라마,애니메이션\마쇼파일\애니메이션, 전대물\나루토 (2002)
+    CInternetSession session(_T("KpaxWebHardClient"));
+    CFtpConnection* pFtpConn = NULL;
 
-    BOOL bWorking = finder.FindFile(strServerPath);
-    while (bWorking) {
-        bWorking = finder.FindNextFile();
+    try {
+        CString strIP = _T("125.188.38.149");
+        pFtpConn = session.GetFtpConnection(strIP, _T("friend"), _T("1111"), 2121, TRUE);
 
-        if (finder.IsDots()) continue; // . 이나 .. 폴더 제외
-        if (finder.IsDirectory()) continue; // 일단 파일만 표시
+        // 1. 서버에 UTF8 사용 강제 명령
+        pFtpConn->Command(_T("OPTS UTF8 ON"));
 
-        // 리스트에 파일명 추가
-        int nIdx = m_ListCtrl.InsertItem(m_ListCtrl.GetItemCount(), finder.GetFileName());
-        m_ListCtrl.SetItemText(nIdx, 1, L"0%");
-        m_ListCtrl.SetItemText(nIdx, 2, L"대기 중 (체크 후 다운로드)");
+        // 2. [핵심] MFC 클래스 대신 윈도우 API(A버전)를 직접 사용합니다.
+        // FtpFindFirstFileA는 파일명을 바이트(char*) 그대로 가져옵니다.
+        WIN32_FIND_DATAA fd;
+        HINTERNET hFind = ::FtpFindFirstFileA((HINTERNET)*pFtpConn, "*.*", &fd, INTERNET_FLAG_RELOAD | INTERNET_FLAG_PASSIVE, 0);
+
+        if (hFind != NULL) {
+            BOOL bContinue = TRUE;
+            while (bContinue) {
+                // 폴더(.)나 상위폴더(..) 제외
+                if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+
+                    // 3. 서버가 준 UTF-8 바이트를 유니코드로 정밀 변환
+                    int nUniLen = MultiByteToWideChar(CP_UTF8, 0, fd.cFileName, -1, NULL, 0);
+                    CString strFileName;
+
+                    if (nUniLen > 0) {
+                        std::vector<wchar_t> uniBuf(nUniLen);
+                        MultiByteToWideChar(CP_UTF8, 0, fd.cFileName, -1, uniBuf.data(), nUniLen);
+                        strFileName = uniBuf.data();
+                    }
+                    else {
+                        strFileName = fd.cFileName; // 변환 실패시 그대로 출력
+                    }
+
+                    // 4. 리스트 컨트롤에 추가
+                    int nIdx = m_ListCtrl.InsertItem(m_ListCtrl.GetItemCount(), strFileName);
+                    m_ListCtrl.SetItemText(nIdx, 1, L"0%");
+                    m_ListCtrl.SetItemText(nIdx, 2, L"대기 중");
+                }
+
+                bContinue = ::InternetFindNextFileA(hFind, &fd);
+            }
+            ::InternetCloseHandle(hFind);
+        }
     }
-    finder.Close();
+    catch (CInternetException* pEx) {
+        TCHAR szErr[1024];
+        pEx->GetErrorMessage(szErr, 1024);
+        AfxMessageBox(L"접속 에러: " + CString(szErr));
+        pEx->Delete();
+    }
 
+    if (pFtpConn) { pFtpConn->Close(); delete pFtpConn; }
+    session.Close();
     UpdateTotalStatus();
 }
+
 
 LRESULT Ckpaxkkk01Dlg::OnUpdateSpeed(WPARAM wp, LPARAM lp) {
     int speedData = LOWORD(wp); // 속도 (*10 상태)
