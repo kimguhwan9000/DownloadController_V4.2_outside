@@ -17,6 +17,7 @@
 #define IDC_BTN_SELECT_ALL              1007
 #define IDC_EDIT_PATH                   1008
 #define IDC_BTN_BROWSE                  1009
+#define IDC_BTN_DELETE_SELECTED         1011
 #define ID_32771                        32771
 #define ID_MENU_DELETE                  32772
 
@@ -26,7 +27,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        131
 #define _APS_NEXT_COMMAND_VALUE         32773
-#define _APS_NEXT_CONTROL_VALUE         1010
+#define _APS_NEXT_CONTROL_VALUE         1012
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

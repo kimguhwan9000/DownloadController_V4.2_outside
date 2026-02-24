@@ -87,6 +87,7 @@ public:
 	afx_msg void OnBnClickedChkAutoClear();
 	afx_msg void ProcessAutoClear();
 	afx_msg void OnBnClickedBtnBrowse();
+	afx_msg void OnBnClickedBtnDeleteSelected();
 };
 
 

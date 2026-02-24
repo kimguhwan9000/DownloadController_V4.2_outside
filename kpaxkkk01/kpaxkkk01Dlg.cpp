@@ -89,6 +89,7 @@ BEGIN_MESSAGE_MAP(Ckpaxkkk01Dlg, CDialogEx)
     ON_BN_CLICKED(IDC_BTN_DOWNLOAD_SELECTED, &Ckpaxkkk01Dlg::OnBnClickedBtnDownloadSelected)
     ON_BN_CLICKED(IDC_BTN_SELECT_ALL, &Ckpaxkkk01Dlg::OnBnClickedBtnSelectAll)
     ON_BN_CLICKED(IDC_BTN_BROWSE, &Ckpaxkkk01Dlg::OnBnClickedBtnBrowse)
+    ON_BN_CLICKED(IDC_BTN_DELETE_SELECTED, &Ckpaxkkk01Dlg::OnBnClickedBtnDeleteSelected)
 END_MESSAGE_MAP()
 
 
@@ -1204,5 +1205,36 @@ void Ckpaxkkk01Dlg::OnBnClickedBtnBrowse()
 
         // Edit Control에 경로 표시
         SetDlgItemText(IDC_EDIT_PATH, m_strDownloadPath);
+    }
+}
+
+
+//리스트 "마우스 선택" 또는 "체크박스" 둘 중 하나라도 되면 삭제
+void Ckpaxkkk01Dlg::OnBnClickedBtnDeleteSelected()
+{
+    int nItemCount = m_ListCtrl.GetItemCount();
+    BOOL bAny = FALSE;
+
+    // 하나라도 조건에 맞는지 확인
+    for (int i = 0; i < nItemCount; i++) {
+        if (m_ListCtrl.GetCheck(i) || (m_ListCtrl.GetItemState(i, LVIS_SELECTED) == LVIS_SELECTED)) {
+            bAny = TRUE;
+            break;
+        }
+    }
+
+    if (!bAny) {
+        AfxMessageBox(L"삭제할 항목을 체크하거나 클릭해 주세요.");
+        return;
+    }
+
+    if (AfxMessageBox(L"선택한 항목을 삭제하시겠습니까?", MB_YESNO) == IDYES) {
+        for (int i = nItemCount - 1; i >= 0; i--) {
+            // 체크박스가 켜져 있거나, 마우스로 선택되었거나
+            if (m_ListCtrl.GetCheck(i) || (m_ListCtrl.GetItemState(i, LVIS_SELECTED) == LVIS_SELECTED)) {
+                m_ListCtrl.DeleteItem(i);
+            }
+        }
+        UpdateTotalStatus();
     }
 }
