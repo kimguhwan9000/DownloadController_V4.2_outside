@@ -7,6 +7,7 @@
 #include "afxdialogex.h"
 #include <shlwapi.h>
 #pragma comment(lib, "shlwapi.lib")
+#include <algorithm>
 #include <vector>
 
 // 서버 접속 정보 통합 관리
@@ -53,8 +54,11 @@ public:
 protected:
     virtual void DoDataExchange(CDataExchange* pDX) { CDialogEx::DoDataExchange(pDX); }
     DECLARE_MESSAGE_MAP()
+public:
+    //afx_msg void OnNMDblclkListDownload(NMHDR* pNMHDR, LRESULT* pResult);
 };
 BEGIN_MESSAGE_MAP(CAboutDlg, CDialogEx)
+    //ON_NOTIFY(NM_DBLCLK, IDC_LIST_DOWNLOAD, &CAboutDlg::OnNMDblclkListDownload)
 END_MESSAGE_MAP()
 
 // Ckpaxkkk01Dlg 대화 상자 구현
@@ -81,7 +85,7 @@ BEGIN_MESSAGE_MAP(Ckpaxkkk01Dlg, CDialogEx)
     ON_BN_CLICKED(IDC_BTN_UPLOAD, &Ckpaxkkk01Dlg::OnBnClickedBtnUpload)
     ON_NOTIFY(NM_CUSTOMDRAW, IDC_LIST_DOWNLOAD, &Ckpaxkkk01Dlg::OnNMCustomdrawListDownload)
     ON_WM_DROPFILES()
-    ON_NOTIFY(NM_RCLICK, IDC_LIST_DOWNLOAD, &Ckpaxkkk01Dlg::OnNMRClickListDownload)
+    //ON_NOTIFY(NM_RCLICK, IDC_LIST_DOWNLOAD, &Ckpaxkkk01Dlg::OnNMRClickListDownload)
     ON_COMMAND(ID_MENU_DELETE, &Ckpaxkkk01Dlg::OnMenuDelete)
     ON_BN_CLICKED(IDC_BTN_CLEAR_FINISHED, &Ckpaxkkk01Dlg::OnBnClickedBtnClearFinished)
     ON_BN_CLICKED(IDC_CHK_AUTO_CLEAR, &Ckpaxkkk01Dlg::OnBnClickedChkAutoClear)
@@ -90,6 +94,7 @@ BEGIN_MESSAGE_MAP(Ckpaxkkk01Dlg, CDialogEx)
     ON_BN_CLICKED(IDC_BTN_SELECT_ALL, &Ckpaxkkk01Dlg::OnBnClickedBtnSelectAll)
     ON_BN_CLICKED(IDC_BTN_BROWSE, &Ckpaxkkk01Dlg::OnBnClickedBtnBrowse)
     ON_BN_CLICKED(IDC_BTN_DELETE_SELECTED, &Ckpaxkkk01Dlg::OnBnClickedBtnDeleteSelected)
+    ON_NOTIFY(NM_DBLCLK, IDC_LIST_DOWNLOAD, &Ckpaxkkk01Dlg::OnNMDblclkListDownload)
 END_MESSAGE_MAP()
 
 
@@ -591,6 +596,38 @@ void RegisterURIScheme() {
 BOOL Ckpaxkkk01Dlg::OnInitDialog() {
     CDialogEx::OnInitDialog();
 
+
+    // [수정된 부분] kpaxkkk01Dlg.cpp의 OnInitDialog 내부
+    if (!m_ImageList.GetSafeHandle()) {
+        // 16x16 크기, 32비트 컬러 아이콘 리스트 생성
+        m_ImageList.Create(16, 16, ILC_COLOR32 | ILC_MASK, 2, 2);
+
+        // 윈도우 표준 시스템 아이콘 로드 (IDI_FOLDER 대신 표준 상수 사용)
+        // IDI_APPLICATION을 사용하거나 아래처럼 직접 윈도우 핸들로 가져올 수 있습니다.
+        HICON hFolderIcon = AfxGetApp()->LoadStandardIcon(IDI_APPLICATION); // 기본 앱 모양
+        HICON hFileIcon = AfxGetApp()->LoadStandardIcon(IDI_WINLOGO);     // 윈도우 로고 모양
+
+        // 만약 더 폴더다운 아이콘을 원하시면 아래 주석처리된 방식을 쓰세요 (Shell API)
+        /*
+        SHFILEINFO sfi;
+        SHGetFileInfo(L"C:\\Windows", FILE_ATTRIBUTE_DIRECTORY, &sfi, sizeof(sfi), SHGFI_ICON | SHGFI_SMALLICON | SHGFI_USEFILEATTRIBUTES);
+        hFolderIcon = sfi.hIcon;
+        SHGetFileInfo(L"test.txt", FILE_ATTRIBUTE_NORMAL, &sfi, sizeof(sfi), SHGFI_ICON | SHGFI_SMALLICON | SHGFI_USEFILEATTRIBUTES);
+        hFileIcon = sfi.hIcon;
+        */
+
+        m_ImageList.Add(hFolderIcon); // 0번: 폴더 대용
+        m_ImageList.Add(hFileIcon);   // 1번: 파일 대용
+
+        m_ListCtrl.SetImageList(&m_ImageList, LVSIL_SMALL);
+    }
+
+    m_ListCtrl.SetImageList(&m_ImageList, LVSIL_SMALL);
+
+    // 2. 초기 경로 설정
+    m_strCurrentPath = L"/";
+
+
     SetIcon(m_hIcon, TRUE);
     SetIcon(m_hIcon, FALSE);
 
@@ -1025,61 +1062,180 @@ void Ckpaxkkk01Dlg::OnNMRClickListDownload(NMHDR* pNMHDR, LRESULT* pResult)
 //}
 
 //파일질라 서버 호출 실제 웹서버를 부르는 화면입니다.
+
+
+
+//void Ckpaxkkk01Dlg::OnBnClickedBtnStart()
+//{
+//    m_ListCtrl.DeleteAllItems();
+//
+//    CInternetSession session(_T("KpaxWebHardClient"));
+//    CFtpConnection* pFtpConn = NULL;
+//
+//    try {
+//        //CString strIP = _T("125.188.38.149");
+//        pFtpConn = session.GetFtpConnection(SERVER_IP, _T("friend"), _T("1111"), 2121, TRUE);
+//
+//        // 1. 서버에 UTF8 사용 강제 명령
+//        pFtpConn->Command(_T("OPTS UTF8 ON"));
+//
+//        // 2. [핵심] MFC 클래스 대신 윈도우 API(A버전)를 직접 사용합니다.
+//        // FtpFindFirstFileA는 파일명을 바이트(char*) 그대로 가져옵니다.
+//        WIN32_FIND_DATAA fd;
+//        HINTERNET hFind = ::FtpFindFirstFileA((HINTERNET)*pFtpConn, "*.*", &fd, INTERNET_FLAG_RELOAD | INTERNET_FLAG_PASSIVE, 0);
+//
+//        if (hFind != NULL) {
+//            BOOL bContinue = TRUE;
+//            while (bContinue) {
+//                // 폴더(.)나 상위폴더(..) 제외
+//                if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+//
+//                    // 3. 서버가 준 UTF-8 바이트를 유니코드로 정밀 변환
+//                    int nUniLen = MultiByteToWideChar(CP_UTF8, 0, fd.cFileName, -1, NULL, 0);
+//                    CString strFileName;
+//
+//                    if (nUniLen > 0) {
+//                        std::vector<wchar_t> uniBuf(nUniLen);
+//                        MultiByteToWideChar(CP_UTF8, 0, fd.cFileName, -1, uniBuf.data(), nUniLen);
+//                        strFileName = uniBuf.data();
+//                    }
+//                    else {
+//                        strFileName = fd.cFileName; // 변환 실패시 그대로 출력
+//                    }
+//
+//                    // 4. 리스트 컨트롤에 추가
+//                    int nIdx = m_ListCtrl.InsertItem(m_ListCtrl.GetItemCount(), strFileName);
+//                    m_ListCtrl.SetItemText(nIdx, 1, L"0%");
+//                    m_ListCtrl.SetItemText(nIdx, 2, L"대기 중");
+//                }
+//
+//                bContinue = ::InternetFindNextFileA(hFind, &fd);
+//            }
+//            ::InternetCloseHandle(hFind);
+//        }
+//    }
+//    catch (CInternetException* pEx) {
+//        TCHAR szErr[1024];
+//        pEx->GetErrorMessage(szErr, 1024);
+//        AfxMessageBox(L"접속 에러: " + CString(szErr));
+//        pEx->Delete();
+//    }
+//
+//    if (pFtpConn) { pFtpConn->Close(); delete pFtpConn; }
+//    session.Close();
+//    UpdateTotalStatus();
+//}
+//
+//
+//LRESULT Ckpaxkkk01Dlg::OnUpdateSpeed(WPARAM wp, LPARAM lp) {
+//    int speedData = LOWORD(wp); // 속도 (*10 상태)
+//    int eta = HIWORD(wp);       // 남은 시간 (초)
+//    int nIdx = (int)lp;
+//
+//    double mbps = speedData / 10.0;
+//    CString strStatus;
+//
+//    if (mbps < 0.1) {
+//        strStatus = L"연결 중...";
+//    }
+//    else {
+//        // [수정] 남은 시간을 분:초 형식으로 변환
+//        if (eta >= 60) {
+//            strStatus.Format(L"전송 중 (%.1f MB/s) - %d분 %d초 남음", mbps, eta / 60, eta % 60);
+//        }
+//        else {
+//            strStatus.Format(L"전송 중 (%.1f MB/s) - %d초 남음", mbps, eta);
+//        }
+//    }
+//
+//    // 리스트 컨트롤의 '상태' 컬럼 업데이트
+//    m_ListCtrl.SetItemText(nIdx, 2, strStatus);
+//
+//    return 0;
+//}
+//
+
 void Ckpaxkkk01Dlg::OnBnClickedBtnStart()
 {
     m_ListCtrl.DeleteAllItems();
+
+    // 상위 폴더 항목은 항상 최상단에 고정
+    if (m_strCurrentPath != L"/") {
+        int nIdx = m_ListCtrl.InsertItem(0, L"..", 0);
+        m_ListCtrl.SetItemText(nIdx, 2, L"<상위 폴더>");
+    }
 
     CInternetSession session(_T("KpaxWebHardClient"));
     CFtpConnection* pFtpConn = NULL;
 
     try {
-        //CString strIP = _T("125.188.38.149");
         pFtpConn = session.GetFtpConnection(SERVER_IP, _T("friend"), _T("1111"), 2121, TRUE);
-
-        // 1. 서버에 UTF8 사용 강제 명령
         pFtpConn->Command(_T("OPTS UTF8 ON"));
 
-        // 2. [핵심] MFC 클래스 대신 윈도우 API(A버전)를 직접 사용합니다.
-        // FtpFindFirstFileA는 파일명을 바이트(char*) 그대로 가져옵니다.
+        CString strSearchPath = m_strCurrentPath;
+        if (strSearchPath.Right(1) != L"/") strSearchPath += L"/";
+        strSearchPath += L"*.*";
+
+        int utf8PathLen = WideCharToMultiByte(CP_UTF8, 0, strSearchPath, -1, NULL, 0, NULL, NULL);
+        std::vector<char> utf8Path(utf8PathLen);
+        WideCharToMultiByte(CP_UTF8, 0, strSearchPath, -1, utf8Path.data(), utf8PathLen, NULL, NULL);
+
         WIN32_FIND_DATAA fd;
-        HINTERNET hFind = ::FtpFindFirstFileA((HINTERNET)*pFtpConn, "*.*", &fd, INTERNET_FLAG_RELOAD | INTERNET_FLAG_PASSIVE, 0);
+        HINTERNET hFind = ::FtpFindFirstFileA((HINTERNET)*pFtpConn, utf8Path.data(), &fd, INTERNET_FLAG_RELOAD | INTERNET_FLAG_PASSIVE, 0);
 
         if (hFind != NULL) {
+            // [정렬을 위한 임시 저장소]
+            struct FileInfo { CString name; DWORD attr; };
+            std::vector<FileInfo> folders;
+            std::vector<FileInfo> files;
+
             BOOL bContinue = TRUE;
             while (bContinue) {
-                // 폴더(.)나 상위폴더(..) 제외
-                if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-
-                    // 3. 서버가 준 UTF-8 바이트를 유니코드로 정밀 변환
-                    int nUniLen = MultiByteToWideChar(CP_UTF8, 0, fd.cFileName, -1, NULL, 0);
-                    CString strFileName;
-
-                    if (nUniLen > 0) {
-                        std::vector<wchar_t> uniBuf(nUniLen);
-                        MultiByteToWideChar(CP_UTF8, 0, fd.cFileName, -1, uniBuf.data(), nUniLen);
-                        strFileName = uniBuf.data();
-                    }
-                    else {
-                        strFileName = fd.cFileName; // 변환 실패시 그대로 출력
-                    }
-
-                    // 4. 리스트 컨트롤에 추가
-                    int nIdx = m_ListCtrl.InsertItem(m_ListCtrl.GetItemCount(), strFileName);
-                    m_ListCtrl.SetItemText(nIdx, 1, L"0%");
-                    m_ListCtrl.SetItemText(nIdx, 2, L"대기 중");
+                if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0) {
+                    bContinue = ::InternetFindNextFileA(hFind, &fd);
+                    continue;
                 }
+
+                // 한글 변환
+                int nUniLen = MultiByteToWideChar(CP_UTF8, 0, fd.cFileName, -1, NULL, 0);
+                CString strName;
+                if (nUniLen > 0) {
+                    std::vector<wchar_t> uniBuf(nUniLen);
+                    MultiByteToWideChar(CP_UTF8, 0, fd.cFileName, -1, uniBuf.data(), nUniLen);
+                    strName = uniBuf.data();
+                }
+                else { strName = (CString)fd.cFileName; }
+
+                // 폴더와 파일을 각각 다른 바구니에 담기
+                if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+                    folders.push_back({ strName, fd.dwFileAttributes });
+                else
+                    files.push_back({ strName, fd.dwFileAttributes });
 
                 bContinue = ::InternetFindNextFileA(hFind, &fd);
             }
             ::InternetCloseHandle(hFind);
+
+            // [추가] 가나다순으로 이름 정렬 (선택 사항)
+            auto sortFunc = [](const FileInfo& a, const FileInfo& b) { return a.name < b.name; };
+            std::sort(folders.begin(), folders.end(), sortFunc);
+            std::sort(files.begin(), files.end(), sortFunc);
+
+            // 1. 폴더 바구니 먼저 리스트에 쏟아붓기
+            for (auto& f : folders) {
+                int nIdx = m_ListCtrl.InsertItem(m_ListCtrl.GetItemCount(), f.name, 0);
+                m_ListCtrl.SetItemText(nIdx, 2, L"<폴더>");
+            }
+
+            // 2. 파일 바구니 그다음에 쏟아붓기
+            for (auto& f : files) {
+                int nIdx = m_ListCtrl.InsertItem(m_ListCtrl.GetItemCount(), f.name, 1);
+                m_ListCtrl.SetItemText(nIdx, 1, L"0%");
+                m_ListCtrl.SetItemText(nIdx, 2, L"대기 중");
+            }
         }
     }
-    catch (CInternetException* pEx) {
-        TCHAR szErr[1024];
-        pEx->GetErrorMessage(szErr, 1024);
-        AfxMessageBox(L"접속 에러: " + CString(szErr));
-        pEx->Delete();
-    }
+    catch (CInternetException* pEx) { pEx->Delete(); }
 
     if (pFtpConn) { pFtpConn->Close(); delete pFtpConn; }
     session.Close();
@@ -1115,45 +1271,96 @@ LRESULT Ckpaxkkk01Dlg::OnUpdateSpeed(WPARAM wp, LPARAM lp) {
 }
 
 
+//void Ckpaxkkk01Dlg::OnBnClickedBtnDownloadSelected()
+//{
+//    CreateDirectory(L"C:\\Test", NULL);
+//
+//    int nCount = m_ListCtrl.GetItemCount();
+//    int nActivated = 0;
+//
+//    for (int i = 0; i < nCount; i++)
+//    {
+//        // 체크박스 또는 선택된 항목 확인
+//        if (m_ListCtrl.GetCheck(i) || (m_ListCtrl.GetItemState(i, LVIS_SELECTED) & LVIS_SELECTED))
+//        {
+//            nActivated++;
+//            CString strFileName = m_ListCtrl.GetItemText(i, 0);
+//
+//            // 메모리 에러 방지를 위해 새로 할당
+//            DownloadRequest* pReq = new DownloadRequest();
+//            pReq->hMainWnd = this->GetSafeHwnd();
+//            pReq->nItemIndex = i;
+//
+//            // 1. Edit Control에 적힌 현재 경로를 가져옵니다.
+//            CString strSelectedPath;
+//            GetDlgItemText(IDC_EDIT_PATH, strSelectedPath);
+//
+//            // 2. 경로 끝에 역슬래시(\)가 있는지 확인하고 보정합니다.
+//            if (strSelectedPath.Right(1) != L"\\") {
+//                strSelectedPath += L"\\";
+//            }
+//
+//            // 3. 사용자가 선택한 폴더가 실제로 존재하는지 확인하고, 없으면 생성합니다.
+//            if (!strSelectedPath.IsEmpty()) {
+//                CreateDirectory(strSelectedPath, NULL);
+//            }
+//
+//            // 4. [수정 완료] 중복 선언 제거 및 경로 설정
+//            CString strFullTarget = strSelectedPath + strFileName;
+//
+//            pReq->source = (LPCTSTR)strFileName;   // FTP 서버는 파일명만 필요함
+//            pReq->target = (LPCTSTR)strFullTarget; // 내 컴퓨터에 저장될 최종 경로
+//
+//            pReq->nTotalBytes = 0;
+//            pReq->nLastBytes = 0;
+//            pReq->nLastPercent = -1;
+//            pReq->dwLastTick = GetTickCount();
+//            pReq->dwSpeedTick = GetTickCount();
+//
+//            m_ListCtrl.SetItemText(i, 2, L"전송 시작 중...");
+//
+//            // FTP 전용 스레드 호출
+//            AfxBeginThread(FtpDownloadThreadProc, pReq);
+//        }
+//    }
+//
+//    if (nActivated == 0) AfxMessageBox(L"다운로드할 파일을 선택해주세요.");
+//}
+
 void Ckpaxkkk01Dlg::OnBnClickedBtnDownloadSelected()
 {
-    CreateDirectory(L"C:\\Test", NULL);
-
     int nCount = m_ListCtrl.GetItemCount();
     int nActivated = 0;
 
+    // 현재 설정된 로컬 다운로드 경로 가져오기
+    CString strLocalBasePath;
+    GetDlgItemText(IDC_EDIT_PATH, strLocalBasePath);
+    if (strLocalBasePath.Right(1) != L"\\") strLocalBasePath += L"\\";
+
     for (int i = 0; i < nCount; i++)
     {
-        // 체크박스 또는 선택된 항목 확인
         if (m_ListCtrl.GetCheck(i) || (m_ListCtrl.GetItemState(i, LVIS_SELECTED) & LVIS_SELECTED))
         {
-            nActivated++;
             CString strFileName = m_ListCtrl.GetItemText(i, 0);
+            CString strStatus = m_ListCtrl.GetItemText(i, 2);
 
-            // 메모리 에러 방지를 위해 새로 할당
+            // 폴더는 다운로드 대상에서 제외 (필요 시 로직 추가 가능)
+            if (strStatus == L"<폴더>") continue;
+
+            nActivated++;
+
             DownloadRequest* pReq = new DownloadRequest();
             pReq->hMainWnd = this->GetSafeHwnd();
             pReq->nItemIndex = i;
 
-            // 1. Edit Control에 적힌 현재 경로를 가져옵니다.
-            CString strSelectedPath;
-            GetDlgItemText(IDC_EDIT_PATH, strSelectedPath);
+            // [핵심 수정] 서버의 전체 경로를 생성합니다.
+            CString strServerFullPath = m_strCurrentPath;
+            if (strServerFullPath.Right(1) != L"/") strServerFullPath += L"/";
+            strServerFullPath += strFileName; // 예: /movies/inception.mp4
 
-            // 2. 경로 끝에 역슬래시(\)가 있는지 확인하고 보정합니다.
-            if (strSelectedPath.Right(1) != L"\\") {
-                strSelectedPath += L"\\";
-            }
-
-            // 3. 사용자가 선택한 폴더가 실제로 존재하는지 확인하고, 없으면 생성합니다.
-            if (!strSelectedPath.IsEmpty()) {
-                CreateDirectory(strSelectedPath, NULL);
-            }
-
-            // 4. [수정 완료] 중복 선언 제거 및 경로 설정
-            CString strFullTarget = strSelectedPath + strFileName;
-
-            pReq->source = (LPCTSTR)strFileName;   // FTP 서버는 파일명만 필요함
-            pReq->target = (LPCTSTR)strFullTarget; // 내 컴퓨터에 저장될 최종 경로
+            // [수정] source에 파일명만 넣는 게 아니라 전체 경로를 넣습니다.
+            pReq->source = (LPCTSTR)strServerFullPath;
+            pReq->target = (LPCTSTR)(strLocalBasePath + strFileName);
 
             pReq->nTotalBytes = 0;
             pReq->nLastBytes = 0;
@@ -1238,3 +1445,36 @@ void Ckpaxkkk01Dlg::OnBnClickedBtnDeleteSelected()
         UpdateTotalStatus();
     }
 }
+
+// kpaxkkk01Dlg.cpp 파일 맨 아래쪽
+// 함수의 소속(Scope)을 메인 대화상자로 명시합니다.
+void Ckpaxkkk01Dlg::OnNMDblclkListDownload(NMHDR* pNMHDR, LRESULT* pResult)
+{
+    LPNMITEMACTIVATE pNMIA = reinterpret_cast<LPNMITEMACTIVATE>(pNMHDR);
+    int nIdx = pNMIA->iItem;
+
+    if (nIdx != -1) {
+        CString strName = m_ListCtrl.GetItemText(nIdx, 0);
+        CString strStatus = m_ListCtrl.GetItemText(nIdx, 2);
+
+        // [추가] 상위 폴더 이동 로직
+        if (strName == L"..") {
+            // 마지막 '/' 위치를 찾아서 그 앞까지만 남김
+            int nPos = m_strCurrentPath.ReverseFind(L'/');
+            if (nPos <= 0) m_strCurrentPath = L"/";
+            else m_strCurrentPath = m_strCurrentPath.Left(nPos);
+
+            OnBnClickedBtnStart(); // 목록 새로고침
+        }
+        // 일반 폴더 진입 로직
+        else if (strStatus == L"<폴더>") {
+            if (m_strCurrentPath.Right(1) != L"/") m_strCurrentPath += L"/";
+            m_strCurrentPath += strName;
+
+            OnBnClickedBtnStart();
+        }
+    }
+    *pResult = 0;
+}
+
+

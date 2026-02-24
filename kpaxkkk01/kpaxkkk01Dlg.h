@@ -71,6 +71,7 @@ protected:
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
 	afx_msg void OnPaint();
 	afx_msg HCURSOR OnQueryDragIcon();
+	afx_msg void OnNMDblclkListDownload(NMHDR* pNMHDR, LRESULT* pResult);
 	DECLARE_MESSAGE_MAP()
 
 
@@ -80,7 +81,6 @@ protected:
 	afx_msg void OnBnClickedBtnSelectAll();
 public:
 	afx_msg void OnBnClickedBtnStart();
-	CListCtrl m_ListCtrl;
 	afx_msg void OnBnClickedBtnUpload();
 	afx_msg void OnLvnItemchangedListDownload(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnBnClickedBtnClearFinished();
@@ -88,6 +88,13 @@ public:
 	afx_msg void ProcessAutoClear();
 	afx_msg void OnBnClickedBtnBrowse();
 	afx_msg void OnBnClickedBtnDeleteSelected();
+
+	/* 리스트목록 폴더화 만들기 */
+	CListCtrl m_ListCtrl;
+	CImageList m_ImageList;      // 아이콘 저장용
+	CString m_strCurrentPath;    // 현재 서버 경로 저장 (예: "/", "/music/")
+
+	afx_msg void OnNMDblclkListMain(NMHDR* pNMHDR, LRESULT* pResult); // 더블클릭 이벤트 함수
 };
 
 
