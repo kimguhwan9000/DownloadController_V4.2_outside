@@ -9,8 +9,13 @@
 #pragma comment(lib, "shlwapi.lib")
 #include <vector>
 
+// 서버 접속 정보 통합 관리
 #ifdef _DEBUG
-#define new DEBUG_NEW
+#define SERVER_IP    _T("127.0.0.1")  // 내가 테스트할 때는 로컬 접속
+#define SERVER_PORT  2121
+#else
+#define SERVER_IP    _T("125.188.38.149") // 친구에게 줄 때는 공인 IP
+#define SERVER_PORT  2121
 #endif
 
 
@@ -197,7 +202,7 @@ UINT FtpUploadThreadProc(LPVOID pParam) {
 
     try {
         CString strIP = _T("125.188.38.149"); // 서버 공인 IP
-        pFtpConn = session.GetFtpConnection(strIP, _T("friend"), _T("1111"), 2121, TRUE);
+        pFtpConn = session.GetFtpConnection(SERVER_IP, _T("friend"), _T("1111"), 2121, TRUE);
         pFtpConn->Command(_T("OPTS UTF8 ON"));
 
         // 로컬 파일 열기 (업로드할 파일)
@@ -284,18 +289,8 @@ UINT FtpDownloadThreadProc(LPVOID pParam) {
 
     try {
 
-        CString strIP;
-
-        // 디버그 모드(F5)로 실행할 때는 내 컴퓨터(로컬)로 접속
-        #ifdef _DEBUG
-                strIP = _T("127.0.0.1");
-        #else
-                // 릴리즈 모드(친구에게 줄 배포판)에서는 공인 IP로 접속
-                strIP = _T("125.188.38.149"); // 여기에 본인의 공인 IP 입력
-        #endif
-
         // 1. 서버에 로그인 (패시브 모드)
-        pFtpConn = session.GetFtpConnection(strIP, _T("friend"), _T("1111"), 2121, TRUE);
+        pFtpConn = session.GetFtpConnection(SERVER_IP, _T("friend"), _T("1111"), 2121, TRUE);
 
         // 파일질라에게 UTF-8을 쓰겠다고 선언
         pFtpConn->Command(_T("OPTS UTF8 ON"));
@@ -1037,8 +1032,8 @@ void Ckpaxkkk01Dlg::OnBnClickedBtnStart()
     CFtpConnection* pFtpConn = NULL;
 
     try {
-        CString strIP = _T("125.188.38.149");
-        pFtpConn = session.GetFtpConnection(strIP, _T("friend"), _T("1111"), 2121, TRUE);
+        //CString strIP = _T("125.188.38.149");
+        pFtpConn = session.GetFtpConnection(SERVER_IP, _T("friend"), _T("1111"), 2121, TRUE);
 
         // 1. 서버에 UTF8 사용 강제 명령
         pFtpConn->Command(_T("OPTS UTF8 ON"));
