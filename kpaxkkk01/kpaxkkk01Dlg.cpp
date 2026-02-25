@@ -28,6 +28,9 @@
 
 
 
+
+
+
 // ==========================================================
 // [디버깅용] 내부 진행 상황을 감시하는 특수 세션 클래스
 // ==========================================================
@@ -162,6 +165,9 @@ Ckpaxkkk01Dlg::Ckpaxkkk01Dlg(CWnd* pParent) : CDialogEx(IDD_KPAXKKK01_DIALOG, pP
 void Ckpaxkkk01Dlg::DoDataExchange(CDataExchange* pDX) {
     CDialogEx::DoDataExchange(pDX);
     DDX_Control(pDX, IDC_LIST_DOWNLOAD, m_ListCtrl);
+
+    // 이 줄이 반드시 있어야 m_btnStart가 실제 화면의 버튼을 조종합니다.
+    DDX_Control(pDX, IDC_BTN_START, m_btnStart);
 }
 
 BEGIN_MESSAGE_MAP(Ckpaxkkk01Dlg, CDialogEx)
@@ -184,6 +190,7 @@ BEGIN_MESSAGE_MAP(Ckpaxkkk01Dlg, CDialogEx)
     ON_BN_CLICKED(IDC_BTN_BROWSE, &Ckpaxkkk01Dlg::OnBnClickedBtnBrowse)
     ON_BN_CLICKED(IDC_BTN_DELETE_SELECTED, &Ckpaxkkk01Dlg::OnBnClickedBtnDeleteSelected)
     ON_NOTIFY(NM_DBLCLK, IDC_LIST_DOWNLOAD, &Ckpaxkkk01Dlg::OnNMDblclkListDownload)
+    ON_WM_CTLCOLOR() // [추가] 이 줄을 넣으세요. (세미콜론 없음 주의)
 END_MESSAGE_MAP()
 
 
@@ -684,6 +691,16 @@ void RegisterURIScheme() {
 
 BOOL Ckpaxkkk01Dlg::OnInitDialog() {
     CDialogEx::OnInitDialog();
+
+    // [추가] 배경색으로 쓸 브러시를 만듭니다. 
+    m_hbrBack.CreateSolidBrush(RGB(240, 245, 255)); //(연한 파랑)
+    //m_hbrBack.CreateSolidBrush(RGB(30, 30, 30)); //(다크)
+
+    // 버튼 배경색 (연한 파랑 또는 흰색 계열일 때 글자가 잘 보입니다)
+    m_btnStart.SetFaceColor(RGB(225, 235, 255), TRUE);
+
+    // [수정] 글자 색상을 진한 파란색(Navy)으로 설정
+    m_btnStart.SetTextColor(RGB(0, 0, 128));
 
 
     // [수정된 부분] kpaxkkk01Dlg.cpp의 OnInitDialog 내부
@@ -1887,4 +1904,19 @@ void Ckpaxkkk01Dlg::OnNMDblclkListDownload(NMHDR* pNMHDR, LRESULT* pResult)
     *pResult = 0;
 }
 
+
+
+// [kpaxkkk01Dlg.cpp 맨 아래]
+HBRUSH Ckpaxkkk01Dlg::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
+{
+    HBRUSH hbr = CDialogEx::OnCtlColor(pDC, pWnd, nCtlColor);
+
+    // 대화 상자 자체(DLG)이거나 글자 라벨(STATIC)일 때 배경색 적용
+    if (nCtlColor == CTLCOLOR_DLG || nCtlColor == CTLCOLOR_STATIC)
+    {
+        //pDC->SetBkColor(RGB(240, 245, 255)); // 글자 뒤 배경색을 투명하게 맞춤
+        return (HBRUSH)m_hbrBack; // 우리가 만든 브러시를 리턴해서 배경을 칠함
+    }
+    return hbr;
+}
 

@@ -65,6 +65,8 @@ public:
 // 구현입니다.
 protected:
 	HICON m_hIcon;
+	CBrush m_hbrBack; // 배경색을 저장할 브러시 변수
+	CMFCButton m_btnStart;
 
 	// 생성된 메시지 맵 함수
 	virtual BOOL OnInitDialog();
@@ -73,12 +75,11 @@ protected:
 	afx_msg HCURSOR OnQueryDragIcon();
 	afx_msg void OnNMDblclkListDownload(NMHDR* pNMHDR, LRESULT* pResult);
 	DECLARE_MESSAGE_MAP()
-
-
 	afx_msg LRESULT OnUpdateProgress(WPARAM wp, LPARAM lp);
 	afx_msg LRESULT OnDownloadComplete(WPARAM wp, LPARAM lp);
 	afx_msg void OnBnClickedBtnDownloadSelected();
 	afx_msg void OnBnClickedBtnSelectAll();
+	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
 public:
 	afx_msg void OnBnClickedBtnStart();
 	afx_msg void OnBnClickedBtnUpload();
