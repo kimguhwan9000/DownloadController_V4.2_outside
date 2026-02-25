@@ -88,6 +88,8 @@ public:
 	afx_msg void ProcessAutoClear();
 	afx_msg void OnBnClickedBtnBrowse();
 	afx_msg void OnBnClickedBtnDeleteSelected();
+	static UINT FtpDownloadThreadProc(LPVOID pParam);
+	static UINT FtpUploadThreadProc(LPVOID pParam); // 업로드용 스레드 함수
 
 	/* 리스트목록 폴더화 만들기 */
 	CListCtrl m_ListCtrl;

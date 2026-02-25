@@ -279,64 +279,77 @@ UINT UploadThreadProc(LPVOID pParam) {
 }
 
 // [새로 추가] 서버로 파일을 쏘아올리는 FTP 업로드 엔진
-UINT FtpUploadThreadProc(LPVOID pParam) {
+UINT Ckpaxkkk01Dlg::FtpUploadThreadProc(LPVOID pParam) {
     DownloadRequest* pReq = (DownloadRequest*)pParam;
     if (pReq == NULL) return 0;
 
     Ckpaxkkk01Dlg* pMain = (Ckpaxkkk01Dlg*)CWnd::FromHandle(pReq->hMainWnd);
     WaitForSingleObject(pMain->m_hSemaphore, INFINITE);
 
-    pReq->dwLastTick = GetTickCount();
+    // 초기화
     pReq->dwSpeedTick = GetTickCount();
     pReq->nLastBytes = 0;
     pReq->nLastPercent = -1;
+    pReq->nTotalBytes = 0;
 
     BOOL bResult = FALSE;
     CInternetSession session(_T("KpaxWebHardClient"));
     CFtpConnection* pFtpConn = NULL;
+    CFile localFile;
 
     try {
-        CString strIP = _T("125.188.38.149"); // 서버 공인 IP
-
-        
         pFtpConn = session.GetFtpConnection(SERVER_IP, _T("kpax"), _T("1111"), 2121, TRUE);
         pFtpConn->Command(_T("OPTS UTF8 ON"));
 
-        // 로컬 파일 열기 (업로드할 파일)
-        CFile localFile;
+        // [수정] 1. 로컬 파일 열기 및 전체 크기 획득
         if (localFile.Open(pReq->source.c_str(), CFile::modeRead | CFile::typeBinary)) {
-            pReq->nTotalBytes = localFile.GetLength();
+            pReq->nTotalBytes = localFile.GetLength(); // 로컬 파일의 실제 크기
 
-            // 서버에 생성될 파일명 (UTF-8 처리)
-            CString strDestName = pReq->target.c_str(); // 파일명만 들어있어야 함
-            int utf8Len = WideCharToMultiByte(CP_UTF8, 0, strDestName, -1, NULL, 0, NULL, NULL);
+            // 서버 측 저장 경로 설정 (파일명 UTF-8 변환)
+            CString strFileName = pReq->target.c_str();
+            int utf8Len = WideCharToMultiByte(CP_UTF8, 0, strFileName, -1, NULL, 0, NULL, NULL);
             char* pUtf8Name = new char[utf8Len];
-            WideCharToMultiByte(CP_UTF8, 0, strDestName, -1, pUtf8Name, utf8Len, NULL, NULL);
+            WideCharToMultiByte(CP_UTF8, 0, strFileName, -1, pUtf8Name, utf8Len, NULL, NULL);
 
-            // 서버 파일 열기 (쓰기 모드)
+            // 서버에 파일 생성
             HINTERNET hFtpFile = ::FtpOpenFileA((HINTERNET)*pFtpConn, pUtf8Name, GENERIC_WRITE, FTP_TRANSFER_TYPE_BINARY | INTERNET_FLAG_PASSIVE, 0);
             delete[] pUtf8Name;
 
             if (hFtpFile != NULL) {
                 const DWORD BUFFER_SIZE = 64 * 1024;
                 BYTE* buffer = new BYTE[BUFFER_SIZE];
-                DWORD bytesWritten = 0;
+                DWORD bytesRead = 0;
                 ULONGLONG totalUploaded = 0;
-                UINT readCount = 0;
 
-                while ((readCount = localFile.Read(buffer, BUFFER_SIZE)) > 0) {
-                    if (::InternetWriteFile(hFtpFile, buffer, readCount, &bytesWritten)) {
-                        totalUploaded += bytesWritten;
+                // [수정] 2. 루프 돌며 데이터 전송 및 진행률 계산
+                while ((bytesRead = localFile.Read(buffer, BUFFER_SIZE)) > 0) {
+                    DWORD bytesWritten = 0;
+                    if (!::InternetWriteFile(hFtpFile, buffer, bytesRead, &bytesWritten)) break;
 
-                        // UI 업데이트 (속도/진행률) 로직은 다운로드와 동일하게 적용
-                        DWORD dwCurrentTick = GetTickCount();
-                        if (dwCurrentTick - pReq->dwSpeedTick >= 1000) {
-                            double mbps = (double)(totalUploaded - pReq->nLastBytes) / (1024.0 * 1024.0);
-                            ::PostMessage(pReq->hMainWnd, WM_UPDATE_SPEED, MAKEWPARAM((WORD)(mbps * 10), 0), (LPARAM)pReq->nItemIndex);
-                            pReq->dwSpeedTick = dwCurrentTick;
-                            pReq->nLastBytes = totalUploaded;
+                    totalUploaded += bytesWritten;
+                    DWORD dwCurrentTick = GetTickCount();
+
+                    // [수정] 3. 속도 및 ETA 계산 (1초 주기)
+                    if (dwCurrentTick - pReq->dwSpeedTick >= 1000) {
+                        double diffBytes = (double)(totalUploaded - pReq->nLastBytes);
+                        double mbps = diffBytes / (1024.0 * 1024.0);
+
+                        int eta = 0;
+                        if (diffBytes > 0 && pReq->nTotalBytes > totalUploaded) {
+                            ULONGLONG remainingBytes = pReq->nTotalBytes - totalUploaded;
+                            eta = (int)((double)remainingBytes / diffBytes);
                         }
-                        int percent = (int)((double)totalUploaded / (double)pReq->nTotalBytes * 100);
+
+                        // UI 업데이트 메시지 전송
+                        ::PostMessage(pReq->hMainWnd, WM_UPDATE_SPEED, MAKEWPARAM((WORD)(mbps * 10), (WORD)eta), (LPARAM)pReq->nItemIndex);
+
+                        pReq->dwSpeedTick = dwCurrentTick;
+                        pReq->nLastBytes = totalUploaded;
+                    }
+
+                    // [수정] 4. 진행률 0% 방지 (double 캐스팅)
+                    if (pReq->nTotalBytes > 0) {
+                        int percent = (int)(((double)totalUploaded / (double)pReq->nTotalBytes) * 100.0);
                         if (percent > pReq->nLastPercent) {
                             pReq->nLastPercent = percent;
                             ::PostMessage(pReq->hMainWnd, WM_UPDATE_PROGRESS, (WPARAM)percent, (LPARAM)pReq->nItemIndex);
@@ -344,15 +357,15 @@ UINT FtpUploadThreadProc(LPVOID pParam) {
                     }
                 }
                 delete[] buffer;
+                bResult = (totalUploaded == pReq->nTotalBytes);
                 ::InternetCloseHandle(hFtpFile);
-                bResult = TRUE;
             }
             localFile.Close();
         }
     }
     catch (CInternetException* pEx) { pEx->Delete(); }
 
-    if (pFtpConn) { pFtpConn->Close(); delete pFtpConn; }
+    if (pFtpConn != NULL) { pFtpConn->Close(); delete pFtpConn; }
     session.Close();
 
     ::PostMessage(pReq->hMainWnd, WM_DOWNLOAD_COMPLETE, (WPARAM)bResult, (LPARAM)pReq->nItemIndex);
@@ -363,87 +376,81 @@ UINT FtpUploadThreadProc(LPVOID pParam) {
 
 
 // [새로 추가] 웹하드(FTP) 다운로드 엔진 (한글 인코딩 완벽 우회 + 윈도우 코어 API 직결 버전)
-UINT FtpDownloadThreadProc(LPVOID pParam) {
+// [수정된 다운로드 엔진]
+// 파일 전송 시 진행률이 0%에 머무는 문제는 보통 파일의 전체 크기를 제대로 가져오지 못했거나, 진행률 계산식에서 
+// 정수 나눗셈 오차가 발생할 때 나타납니다
+// [kpaxkkk01Dlg.cpp]
+UINT Ckpaxkkk01Dlg::FtpDownloadThreadProc(LPVOID pParam) {
     DownloadRequest* pReq = (DownloadRequest*)pParam;
     if (pReq == NULL) return 0;
 
     Ckpaxkkk01Dlg* pMain = (Ckpaxkkk01Dlg*)CWnd::FromHandle(pReq->hMainWnd);
 
-    // 세마포어 대기
+    // 세마포어로 동시 다운로드 개수 제한
     WaitForSingleObject(pMain->m_hSemaphore, INFINITE);
 
     pReq->dwLastTick = GetTickCount();
     pReq->dwSpeedTick = GetTickCount();
     pReq->nLastBytes = 0;
     pReq->nLastPercent = -1;
-    pReq->nTotalBytes = 0;
+    pReq->nTotalBytes = 0; // 초기화
 
     BOOL bResult = FALSE;
-
     CInternetSession session(_T("KpaxWebHardClient"));
     CFtpConnection* pFtpConn = NULL;
-    CFile localFile; // (주의: CInternetFile은 아예 지웠습니다!)
+    CFile localFile;
 
     try {
-
-        // 1. 서버에 로그인 (패시브 모드)
         pFtpConn = session.GetFtpConnection(SERVER_IP, _T("kpax"), _T("1111"), 2121, TRUE);
-
-        // 파일질라에게 UTF-8을 쓰겠다고 선언
         pFtpConn->Command(_T("OPTS UTF8 ON"));
 
-        // ==========================================================
-        // [초강력 핵심] 파일명을 진짜 UTF-8 바이트(char 배열)로 직접 변환!
         CString strFileName = pReq->source.c_str();
         int utf8Len = WideCharToMultiByte(CP_UTF8, 0, strFileName, -1, NULL, 0, NULL, NULL);
         char* pUtf8Name = new char[utf8Len];
         WideCharToMultiByte(CP_UTF8, 0, strFileName, -1, pUtf8Name, utf8Len, NULL, NULL);
 
-        // 윈도우 원시 API를 직접 호출하여 UTF-8 바이트를 서버에 그대로 꽂아버림!
         HINTERNET hFtpFile = ::FtpOpenFileA((HINTERNET)*pFtpConn, pUtf8Name, GENERIC_READ, FTP_TRANSFER_TYPE_BINARY | INTERNET_FLAG_PASSIVE, 0);
         delete[] pUtf8Name;
-        // ==========================================================
 
         if (hFtpFile != NULL) {
-            // 2. 파일 용량 알아내기
+            // [해결] 파일 크기 정확히 가져오기
             DWORD dwFileSizeHigh = 0;
             DWORD dwFileSizeLow = ::FtpGetFileSize(hFtpFile, &dwFileSizeHigh);
             pReq->nTotalBytes = ((ULONGLONG)dwFileSizeHigh << 32) | dwFileSizeLow;
 
-            // 3. 내 컴퓨터에 파일 쓰기 시작
             if (localFile.Open(pReq->target.c_str(), CFile::modeCreate | CFile::modeWrite | CFile::typeBinary)) {
-
-                // 4. 다운로드 루프 (64KB 단위) - 껍데기를 버리고 API로 직접 읽기!
                 const DWORD BUFFER_SIZE = 64 * 1024;
                 BYTE* buffer = new BYTE[BUFFER_SIZE];
                 DWORD bytesRead = 0;
                 ULONGLONG totalDownloaded = 0;
 
-                // [핵심 변경] ::InternetReadFile 코어 API 사용!
                 while (::InternetReadFile(hFtpFile, buffer, BUFFER_SIZE, &bytesRead) && bytesRead > 0) {
                     localFile.Write(buffer, bytesRead);
                     totalDownloaded += bytesRead;
 
                     DWORD dwCurrentTick = GetTickCount();
 
-                    // 속도 및 ETA 계산
+                    // [해결] 진행률(0% 방지) 및 속도/ETA 계산
                     if (dwCurrentTick - pReq->dwSpeedTick >= 1000) {
-                        double diff = (double)(totalDownloaded - pReq->nLastBytes);
-                        double mbps = diff / (1024.0 * 1024.0);
+                        double diffBytes = (double)(totalDownloaded - pReq->nLastBytes);
+                        double mbps = diffBytes / (1024.0 * 1024.0);
+
                         int eta = 0;
-                        if (diff > 0 && pReq->nTotalBytes > 0) {
-                            eta = (int)((pReq->nTotalBytes - totalDownloaded) / diff);
+                        if (diffBytes > 0 && pReq->nTotalBytes > totalDownloaded) {
+                            ULONGLONG remainingBytes = pReq->nTotalBytes - totalDownloaded;
+                            eta = (int)((double)remainingBytes / diffBytes);
                         }
-                        WPARAM wp = MAKEWPARAM((WORD)(mbps * 10), (WORD)eta);
-                        ::PostMessage(pReq->hMainWnd, WM_UPDATE_SPEED, wp, (LPARAM)pReq->nItemIndex);
+
+                        // UI 업데이트 메시지 (속도 및 남은 시간)
+                        ::PostMessage(pReq->hMainWnd, WM_UPDATE_SPEED, MAKEWPARAM((WORD)(mbps * 10), (WORD)eta), (LPARAM)pReq->nItemIndex);
 
                         pReq->dwSpeedTick = dwCurrentTick;
                         pReq->nLastBytes = totalDownloaded;
                     }
 
-                    // 진행률 업데이트
                     if (pReq->nTotalBytes > 0) {
-                        int percent = (int)((double)totalDownloaded / (double)pReq->nTotalBytes * 100);
+                        // double 캐스팅으로 0% 문제 해결
+                        int percent = (int)(((double)totalDownloaded / (double)pReq->nTotalBytes) * 100.0);
                         if (percent > pReq->nLastPercent) {
                             pReq->nLastPercent = percent;
                             ::PostMessage(pReq->hMainWnd, WM_UPDATE_PROGRESS, (WPARAM)percent, (LPARAM)pReq->nItemIndex);
@@ -454,27 +461,18 @@ UINT FtpDownloadThreadProc(LPVOID pParam) {
                 bResult = TRUE;
                 localFile.Close();
             }
-            // 코어 핸들 닫기
             ::InternetCloseHandle(hFtpFile);
         }
     }
-    catch (CInternetException* pEx) {
-        TCHAR szErr[1024];
-        pEx->GetErrorMessage(szErr, 1024);
-        OutputDebugString(szErr);
-        pEx->Delete();
-    }
+    catch (CInternetException* pEx) { pEx->Delete(); }
 
-    // 5. 연결 종료
-    if (pFtpConn != NULL) {
-        pFtpConn->Close();
-        delete pFtpConn;
-    }
+    if (pFtpConn != NULL) { pFtpConn->Close(); delete pFtpConn; }
     session.Close();
 
     ::PostMessage(pReq->hMainWnd, WM_DOWNLOAD_COMPLETE, (WPARAM)bResult, (LPARAM)pReq->nItemIndex);
-    ReleaseSemaphore(pMain->m_hSemaphore, 1, NULL);
 
+    // 세마포어 해제 (다음 대기 중인 파일 시작)
+    ReleaseSemaphore(pMain->m_hSemaphore, 1, NULL);
     delete pReq;
     return 0;
 }
@@ -861,21 +859,24 @@ void Ckpaxkkk01Dlg::ProcessAutoClear() {
 // UI 업데이트 핸들러
 LRESULT Ckpaxkkk01Dlg::OnUpdateProgress(WPARAM wp, LPARAM lp) {
     int nIdx = (int)lp;
-
-    // [핵심 추가] 현재 리스트의 해당 줄 파일명을 가져옵니다.
-    CString strCurrentName = m_ListCtrl.GetItemText(nIdx, 0);
-
-    // [핵심 추가] 상위 폴더(..)이거나 폴더라면 업데이트를 완전히 무시합니다.
-    if (strCurrentName == L".." || m_ListCtrl.GetItemText(nIdx, 3) == L"<폴더>") {
-        return 0;
-    }
-
     int nPercent = (int)wp;
-    CString str;
-    str.Format(L"%d%%", nPercent);
 
-    m_ListCtrl.SetItemText(nIdx, 2, str);
-    m_ListCtrl.RedrawItems(nIdx, nIdx); // 즉시 갱신
+    if (nIdx < 0 || nIdx >= m_ListCtrl.GetItemCount()) return 0;
+
+    // 폴더 항목 등 예외 처리
+    CString strName = m_ListCtrl.GetItemText(nIdx, 0);
+    if (strName == L".." || m_ListCtrl.GetItemText(nIdx, 3) == L"<폴더>") return 0;
+
+    // 진행률 텍스트 생성
+    CString strPercent;
+    strPercent.Format(L"%d%%", nPercent);
+
+    // [중요] 2번 컬럼(진행률) 업데이트
+    m_ListCtrl.SetItemText(nIdx, 2, strPercent);
+
+    // 리스트 컨트롤 강제 리드로우 (게이지 그리기 호출)
+    m_ListCtrl.RedrawItems(nIdx, nIdx);
+
     return 0;
 }
 
@@ -1609,7 +1610,7 @@ void Ckpaxkkk01Dlg::OnBnClickedBtnStart()
 LRESULT Ckpaxkkk01Dlg::OnUpdateSpeed(WPARAM wp, LPARAM lp) {
     int nIdx = (int)lp;
 
-    // [핵심 추가] 현재 칸의 파일명과 상태를 확인하여 상위 폴더/일반 폴더면 종료
+    // 현재 줄의 파일명과 상태를 확인하여 상위 폴더/일반 폴더/이미 완료된 건은 무시
     CString strCurrentName = m_ListCtrl.GetItemText(nIdx, 0);
     CString strStatusText = m_ListCtrl.GetItemText(nIdx, 3);
 
@@ -1617,15 +1618,32 @@ LRESULT Ckpaxkkk01Dlg::OnUpdateSpeed(WPARAM wp, LPARAM lp) {
         return 0;
     }
 
-    int speedData = LOWORD(wp);
-    int eta = HIWORD(wp);
+    int speedData = LOWORD(wp); // mbps * 10
+    int eta = HIWORD(wp);       // 초 단위 남은 시간
+
     double mbps = speedData / 10.0;
     CString strStatus;
 
-    if (mbps < 0.1) strStatus = L"연결 중...";
+    if (mbps < 0.01) {
+        strStatus = L"연결 유지 중...";
+    }
     else {
-        if (eta >= 60) strStatus.Format(L"%.1f MB/s - %d분 %d초 남음", mbps, eta / 60, eta % 60);
-        else strStatus.Format(L"%.1f MB/s - %d초 남음", mbps, eta);
+        // ETA(남은 시간) 표시 로직 강화
+        if (eta > 0) {
+            if (eta >= 3600) { // 1시간 이상
+                strStatus.Format(L"%.1f MB/s - %d시간 %d분 남음", mbps, eta / 3600, (eta % 3600) / 60);
+            }
+            else if (eta >= 60) { // 1분 이상
+                strStatus.Format(L"%.1f MB/s - %d분 %d초 남음", mbps, eta / 60, eta % 60);
+            }
+            else { // 1분 미만
+                strStatus.Format(L"%.1f MB/s - %d초 남음", mbps, eta);
+            }
+        }
+        else {
+            // 속도는 나오는데 시간이 0이면 아직 계산 중인 상태
+            strStatus.Format(L"%.1f MB/s - 계산 중...", mbps);
+        }
     }
 
     m_ListCtrl.SetItemText(nIdx, 3, strStatus);
