@@ -12,7 +12,8 @@
 
 // 서버 접속 정보 통합 관리
 #ifdef _DEBUG
-#define SERVER_IP    _T("127.0.0.1")  // 내가 테스트할 때는 로컬 접속
+#define SERVER_IP    _T("192.168.219.100")  // 내부 아이피로 테스트
+//#define SERVER_IP    _T("127.0.0.1")  // 내가 테스트할 때는 로컬 접속
 #define SERVER_PORT  2121
 #else
 #define SERVER_IP    _T("125.188.38.149") // 친구에게 줄 때는 공인 IP
@@ -24,6 +25,94 @@
 #ifndef CDDS_SUBITEMPREPAINT
 #define CDDS_SUBITEMPREPAINT (CDDS_ITEMPREPAINT | 0x00020000)
 #endif
+
+
+
+// ==========================================================
+// [디버깅용] 내부 진행 상황을 감시하는 특수 세션 클래스
+// ==========================================================
+class CMonitorSession : public CInternetSession
+{
+public:
+    CMonitorSession(LPCTSTR pstrAgent = NULL) : CInternetSession(pstrAgent) {
+        // 콜백 활성화 (이게 켜져야 내부 상황을 보고함)
+        EnableStatusCallback(TRUE);
+    }
+
+    // 내부에서 상태가 변할 때마다 이 함수가 호출됨
+    virtual void OnStatusCallback(DWORD_PTR dwContext, DWORD dwInternetStatus,
+        LPVOID lpvStatusInformation, DWORD dwStatusInformationLength)
+    {
+        CString strMsg;
+        switch (dwInternetStatus)
+        {
+        case INTERNET_STATUS_RESOLVING_NAME:
+            strMsg.Format(L"[1] 서버 주소 찾는 중 (DNS)...");
+            break;
+        case INTERNET_STATUS_NAME_RESOLVED:
+            strMsg.Format(L"[2] 서버 주소 찾음! (IP: %s)", (LPCTSTR)lpvStatusInformation);
+            break;
+        case INTERNET_STATUS_CONNECTING_TO_SERVER:
+            strMsg.Format(L"[3] 서버(%s)에 연결 시도 중...", (LPCTSTR)lpvStatusInformation);
+            break;
+        case INTERNET_STATUS_CONNECTED_TO_SERVER:
+            strMsg.Format(L"[4] 서버 연결 성공! (소켓 연결됨)");
+            break;
+        case INTERNET_STATUS_SENDING_REQUEST:
+            strMsg.Format(L"[5] 데이터 요청 보내는 중...");
+            break;
+        case INTERNET_STATUS_REQUEST_SENT:
+            strMsg.Format(L"[6] 요청 전송 완료.");
+            break;
+        case INTERNET_STATUS_RECEIVING_RESPONSE:
+            strMsg.Format(L"[7] 서버 응답 기다리는 중...");
+            break;
+        case INTERNET_STATUS_RESPONSE_RECEIVED:
+            strMsg.Format(L"[8] 서버 응답 받음!");
+            break;
+        case INTERNET_STATUS_CLOSING_CONNECTION:
+            strMsg.Format(L"[9] 연결 종료 중...");
+            break;
+        case INTERNET_STATUS_CONNECTION_CLOSED:
+            strMsg.Format(L"[10] 연결 완전히 끊김.");
+            break;
+        case INTERNET_STATUS_HANDLE_CREATED:
+            strMsg.Format(L"[INFO] 내부 핸들 생성됨.");
+            break;
+        case INTERNET_STATUS_HANDLE_CLOSING:
+            strMsg.Format(L"[INFO] 내부 핸들 닫는 중.");
+            break;
+        default:
+            strMsg.Format(L"[기타 상태] 코드: %d", dwInternetStatus);
+            break;
+        }
+
+        // [중요] 비주얼 스튜디오 '출력' 창에 찍힘
+        OutputDebugString(L"★[WebHard] " + strMsg + L"\n");
+
+        // [선택] 화면에 메시지박스로 보고 싶으면 주석 해제 (너무 많이 떠서 비추천)
+        // AfxMessageBox(strMsg);
+    }
+};
+
+
+
+
+CString FormatFileSize(ULONGLONG dwSize) {
+    CString strSize;
+    if (dwSize >= 1073741824) // 1GB 이상
+        strSize.Format(L"%.2f GB", (double)dwSize / 1073741824.0);
+    else if (dwSize >= 1048576) // 1MB 이상
+        strSize.Format(L"%.2f MB", (double)dwSize / 1048576.0);
+    else if (dwSize >= 1024) // 1KB 이상
+        strSize.Format(L"%.1f KB", (double)dwSize / 1024.0);
+    else
+        strSize.Format(L"%llu B", dwSize);
+    return strSize;
+}
+
+
+
 
 // [에러 방지] 시스템 에러 메시지 변환 함수
 CString GetErrorMessageKorean(DWORD dwErrorCode) {
@@ -208,7 +297,9 @@ UINT FtpUploadThreadProc(LPVOID pParam) {
 
     try {
         CString strIP = _T("125.188.38.149"); // 서버 공인 IP
-        pFtpConn = session.GetFtpConnection(SERVER_IP, _T("friend"), _T("1111"), 2121, TRUE);
+
+        
+        pFtpConn = session.GetFtpConnection(SERVER_IP, _T("kpax"), _T("1111"), 2121, TRUE);
         pFtpConn->Command(_T("OPTS UTF8 ON"));
 
         // 로컬 파일 열기 (업로드할 파일)
@@ -296,7 +387,7 @@ UINT FtpDownloadThreadProc(LPVOID pParam) {
     try {
 
         // 1. 서버에 로그인 (패시브 모드)
-        pFtpConn = session.GetFtpConnection(SERVER_IP, _T("friend"), _T("1111"), 2121, TRUE);
+        pFtpConn = session.GetFtpConnection(SERVER_IP, _T("kpax"), _T("1111"), 2121, TRUE);
 
         // 파일질라에게 UTF-8을 쓰겠다고 선언
         pFtpConn->Command(_T("OPTS UTF8 ON"));
@@ -636,8 +727,9 @@ BOOL Ckpaxkkk01Dlg::OnInitDialog() {
     m_ListCtrl.SetExtendedStyle(dwExStyle);
 
     m_ListCtrl.InsertColumn(0, L"파일명", LVCFMT_LEFT, 250);
-    m_ListCtrl.InsertColumn(1, L"진행률", LVCFMT_CENTER, 100);
-    m_ListCtrl.InsertColumn(2, L"상태", LVCFMT_LEFT, 200);
+    m_ListCtrl.InsertColumn(1, L"크기", LVCFMT_RIGHT, 100);    // 인덱스 1
+    m_ListCtrl.InsertColumn(2, L"진행률", LVCFMT_CENTER, 80);  // 인덱스 2
+    m_ListCtrl.InsertColumn(3, L"상태", LVCFMT_LEFT, 200);    // 인덱스 3
 
     m_strDownloadPath = L"C:\\Test";
     SetDlgItemText(IDC_EDIT_PATH, m_strDownloadPath);
@@ -720,7 +812,7 @@ void Ckpaxkkk01Dlg::UpdateTotalStatus() {
     if (!m_StatusBar.GetSafeHwnd()) return;
 
     m_nTotalFiles = m_ListCtrl.GetItemCount();
-    
+
     // 리스트를 순회하며 완료된 파일 수를 정확히 계산
     int currentDone = 0;
     for (int i = 0; i < m_nTotalFiles; i++) {
@@ -733,7 +825,8 @@ void Ckpaxkkk01Dlg::UpdateTotalStatus() {
         int nTotalPercent = (m_nDoneFiles * 100) / m_nTotalFiles;
         strStatus.Format(L" 진행 상황: %d / %d 완료 (%d%%)", m_nDoneFiles, m_nTotalFiles, nTotalPercent);
         strTitle.Format(L"[%d%%] 파일 전송 매니저", nTotalPercent);
-    } else {
+    }
+    else {
         strStatus = L" 대기 중...";
         strTitle = L"파일 전송 매니저";
     }
@@ -744,9 +837,21 @@ void Ckpaxkkk01Dlg::UpdateTotalStatus() {
 
 // [자동 삭제 로직]
 void Ckpaxkkk01Dlg::ProcessAutoClear() {
+    // 체크박스가 눌려있을 때만 동작
     if (IsDlgButtonChecked(IDC_CHK_AUTO_CLEAR) == BST_CHECKED) {
         for (int i = m_ListCtrl.GetItemCount() - 1; i >= 0; i--) {
-            if (m_ListCtrl.GetItemText(i, 2) == L"완료") {
+            CString strFileName = m_ListCtrl.GetItemText(i, 0);
+            CString strStatus = m_ListCtrl.GetItemText(i, 3); // 3번 컬럼 (상태)
+
+            // [보호 로직] 
+            // 1. 이름이 ".." 이거나 
+            // 2. 상태가 "<폴더>" 이면 절대 지우지 않음
+            if (strFileName == L".." || strStatus == L"<폴더>") {
+                continue;
+            }
+
+            // [삭제 조건] 파일이면서 상태가 "완료"인 경우만 삭제
+            if (strStatus == L"완료") {
                 m_ListCtrl.DeleteItem(i);
             }
         }
@@ -755,40 +860,49 @@ void Ckpaxkkk01Dlg::ProcessAutoClear() {
 
 // UI 업데이트 핸들러
 LRESULT Ckpaxkkk01Dlg::OnUpdateProgress(WPARAM wp, LPARAM lp) {
-    int nPercent = (int)wp;
     int nIdx = (int)lp;
+
+    // [핵심 추가] 현재 리스트의 해당 줄 파일명을 가져옵니다.
+    CString strCurrentName = m_ListCtrl.GetItemText(nIdx, 0);
+
+    // [핵심 추가] 상위 폴더(..)이거나 폴더라면 업데이트를 완전히 무시합니다.
+    if (strCurrentName == L".." || m_ListCtrl.GetItemText(nIdx, 3) == L"<폴더>") {
+        return 0;
+    }
+
+    int nPercent = (int)wp;
     CString str;
     str.Format(L"%d%%", nPercent);
-    m_ListCtrl.SetItemText(nIdx, 1, str);
-    m_ListCtrl.RedrawItems(nIdx, nIdx);
+
+    m_ListCtrl.SetItemText(nIdx, 2, str);
+    m_ListCtrl.RedrawItems(nIdx, nIdx); // 즉시 갱신
     return 0;
 }
+
 
 LRESULT Ckpaxkkk01Dlg::OnDownloadComplete(WPARAM wp, LPARAM lp) {
     BOOL bSuccess = (BOOL)wp;
     int nIdx = (int)lp;
 
+    // [추가] 만약 현재 줄이 폴더나 상위 폴더 기호라면 절대 텍스트를 바꾸지 않음
+    CString strFileName = m_ListCtrl.GetItemText(nIdx, 0);
+    CString strCurrentStatus = m_ListCtrl.GetItemText(nIdx, 3);
+    if (strFileName == L".." || strCurrentStatus == L"<폴더>") {
+        return 0;
+    }
+
     if (bSuccess) {
-        m_ListCtrl.SetItemText(nIdx, 1, L"100%");
-        m_ListCtrl.SetItemText(nIdx, 2, L"완료");
+        m_ListCtrl.SetItemText(nIdx, 2, L"100%");
+        m_ListCtrl.SetItemText(nIdx, 3, L"완료"); // 여기서 <폴더>를 덮어쓰지 않게 위에서 차단함
         m_ListCtrl.RedrawItems(nIdx, nIdx);
-        ProcessAutoClear(); // 자동 삭제 체크
-    } else {
-        m_ListCtrl.SetItemText(nIdx, 2, L"실패: " + GetErrorMessageKorean(GetLastError()));
+        ProcessAutoClear();
+    }
+    else {
+        m_ListCtrl.SetItemText(nIdx, 3, L"실패: " + GetErrorMessageKorean(GetLastError()));
     }
 
     UpdateTotalStatus();
-
-
-    // 전체 파일 수와 완료된 파일 수가 같은지 체크합니다.
-    if (m_nDoneFiles == m_nTotalFiles && m_nTotalFiles > 0) {
-        // 모든 전송이 끝났을 때 딱 한 번 폴더 열기
-        ShellExecute(NULL, L"open", L"C:\\Test", NULL, NULL, SW_SHOW);
-
-        // 축하 메시지를 띄우고 싶다면 추가
-        // AfxMessageBox(L"모든 파일의 다운로드가 완료되었습니다!");
-    }
-
+    // ... 이하 동일
     return 0;
 }
 
@@ -897,8 +1011,17 @@ void Ckpaxkkk01Dlg::OnDropFiles(HDROP hDropInfo) {
 
 // 완료 목록 삭제 버튼
 void Ckpaxkkk01Dlg::OnBnClickedBtnClearFinished() {
+    // 뒤에서부터 돌아야 인덱스가 꼬이지 않습니다.
     for (int i = m_ListCtrl.GetItemCount() - 1; i >= 0; i--) {
-        CString strStatus = m_ListCtrl.GetItemText(i, 2);
+        CString strFileName = m_ListCtrl.GetItemText(i, 0); // 파일명 가져오기
+        CString strStatus = m_ListCtrl.GetItemText(i, 3);   // 상태(Index 3) 가져오기
+
+        // [핵심 추가] 상위 폴더(..)는 어떤 경우에도 삭제 대상에서 제외합니다.
+        if (strFileName == L"..") {
+            continue;
+        }
+
+        // 완료되었거나 실패한 항목만 삭제
         if (strStatus == L"완료" || strStatus.Find(L"실패") != -1) {
             m_ListCtrl.DeleteItem(i);
         }
@@ -912,21 +1035,52 @@ void Ckpaxkkk01Dlg::OnBnClickedChkAutoClear() {
     UpdateTotalStatus();
 }
 
-// [공용] 커스텀 드로우 (게이지 그리기)
-void Ckpaxkkk01Dlg::OnNMCustomdrawListDownload(NMHDR* pNMHDR, LRESULT* pResult) {
+// [공용] 커스텀 드로우 진행률 (게이지 그리기)
+void Ckpaxkkk01Dlg::OnNMCustomdrawListDownload(NMHDR* pNMHDR, LRESULT* pResult)
+{
     LPNMLVCUSTOMDRAW pLVCD = reinterpret_cast<LPNMLVCUSTOMDRAW>(pNMHDR);
     *pResult = CDRF_DODEFAULT;
-    if (pLVCD->nmcd.dwDrawStage == CDDS_PREPAINT) *pResult = CDRF_NOTIFYITEMDRAW;
-    else if (pLVCD->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) *pResult = CDRF_NOTIFYSUBITEMDRAW;
-    else if (pLVCD->nmcd.dwDrawStage == (CDDS_ITEMPREPAINT | CDDS_SUBITEMPREPAINT)) {
-        if (pLVCD->iSubItem == 1) {
+
+    if (pLVCD->nmcd.dwDrawStage == CDDS_PREPAINT)
+    {
+        *pResult = CDRF_NOTIFYITEMDRAW;
+    }
+    else if (pLVCD->nmcd.dwDrawStage == CDDS_ITEMPREPAINT)
+    {
+        *pResult = CDRF_NOTIFYSUBITEMDRAW;
+    }
+    else if (pLVCD->nmcd.dwDrawStage == (CDDS_ITEMPREPAINT | CDDS_SUBITEMPREPAINT))
+    {
+        int nItem = static_cast<int>(pLVCD->nmcd.dwItemSpec);
+        CString strFileName = m_ListCtrl.GetItemText(nItem, 0);
+        CString strStatusText = m_ListCtrl.GetItemText(nItem, 3);
+
+        // 1. 폴더 여부 판별 (상위폴더 혹은 <폴더> 표시인 경우)
+        bool bIsFolder = (strFileName == L".." || strStatusText == L"<폴더>");
+
+        // 진행률 컬럼 (Index 2) 처리
+        if (pLVCD->iSubItem == 2)
+        {
+            if (bIsFolder || strFileName.IsEmpty())
+            {
+                CDC* pDC = CDC::FromHandle(pLVCD->nmcd.hdc);
+                CRect rect;
+                m_ListCtrl.GetSubItemRect(nItem, pLVCD->iSubItem, LVIR_BOUNDS, rect);
+                pDC->FillSolidRect(rect, RGB(255, 255, 255)); // 흰색으로 지우기
+                *pResult = CDRF_SKIPDEFAULT;
+                return;
+            }
+
+            // [기존 게이지 그리기 로직]
             CDC* pDC = CDC::FromHandle(pLVCD->nmcd.hdc);
             CRect rect;
-            m_ListCtrl.GetSubItemRect(pLVCD->nmcd.dwItemSpec, pLVCD->iSubItem, LVIR_BOUNDS, rect);
-            CString strPercent = m_ListCtrl.GetItemText(pLVCD->nmcd.dwItemSpec, pLVCD->iSubItem);
-            int nPercent = _ttoi(strPercent);
+            m_ListCtrl.GetSubItemRect(nItem, pLVCD->iSubItem, LVIR_BOUNDS, rect);
+            CString strPercentText = m_ListCtrl.GetItemText(nItem, 2);
+            int nPercent = _ttoi(strPercentText);
             pDC->FillSolidRect(rect, RGB(255, 255, 255));
-            if (nPercent > 0) {
+            if (nPercent > 0)
+            {
+                if (nPercent > 100) nPercent = 100;
                 CRect progRect = rect;
                 progRect.DeflateRect(2, 2);
                 progRect.right = progRect.left + (int)(progRect.Width() * (nPercent / 100.0));
@@ -934,8 +1088,24 @@ void Ckpaxkkk01Dlg::OnNMCustomdrawListDownload(NMHDR* pNMHDR, LRESULT* pResult) 
             }
             pDC->SetBkMode(TRANSPARENT);
             pDC->SetTextColor(nPercent > 50 ? RGB(255, 255, 255) : RGB(0, 0, 0));
-            pDC->DrawText(strPercent, rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            pDC->DrawText(strPercentText, rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             *pResult = CDRF_SKIPDEFAULT;
+        }
+        // 2. 상태 컬럼 (Index 3) 처리 - 폴더일 때 텍스트 지우기
+        else if (pLVCD->iSubItem == 3)
+        {
+            // 상위 폴더(..)인 경우 "상태" 칸을 깨끗하게 비웁니다.
+            if (strFileName == L"..")
+            {
+                CDC* pDC = CDC::FromHandle(pLVCD->nmcd.hdc);
+                CRect rect;
+                m_ListCtrl.GetSubItemRect(nItem, pLVCD->iSubItem, LVIR_BOUNDS, rect);
+                pDC->FillSolidRect(rect, RGB(255, 255, 255)); // 배경 지우기
+
+                // 필요하다면 여기에 아주 연하게 "<상위 폴더>"라고 다시 써줄 수도 있지만, 
+                // 질문하신 대로 완전히 지우려면 아래 줄에서 끝냅니다.
+                *pResult = CDRF_SKIPDEFAULT;
+            }
         }
     }
 }
@@ -1155,21 +1325,199 @@ void Ckpaxkkk01Dlg::OnNMRClickListDownload(NMHDR* pNMHDR, LRESULT* pResult)
 //}
 //
 
+//void Ckpaxkkk01Dlg::OnBnClickedBtnStart()
+//{
+//    m_ListCtrl.DeleteAllItems();
+//
+//    // 상위 폴더 항목은 항상 최상단에 고정
+//    if (m_strCurrentPath != L"/") {
+//        int nIdx = m_ListCtrl.InsertItem(0, L"..", 0);
+//        m_ListCtrl.SetItemText(nIdx, 2, L"<상위 폴더>");
+//    }
+//
+//    CInternetSession session(_T("KpaxWebHardClient"));
+//    CFtpConnection* pFtpConn = NULL;
+//
+//    try {
+//        pFtpConn = session.GetFtpConnection(SERVER_IP, _T("friend"), _T("1111"), 2121, TRUE);
+//        pFtpConn->Command(_T("OPTS UTF8 ON"));
+//
+//        CString strSearchPath = m_strCurrentPath;
+//        if (strSearchPath.Right(1) != L"/") strSearchPath += L"/";
+//        strSearchPath += L"*.*";
+//
+//        int utf8PathLen = WideCharToMultiByte(CP_UTF8, 0, strSearchPath, -1, NULL, 0, NULL, NULL);
+//        std::vector<char> utf8Path(utf8PathLen);
+//        WideCharToMultiByte(CP_UTF8, 0, strSearchPath, -1, utf8Path.data(), utf8PathLen, NULL, NULL);
+//
+//        WIN32_FIND_DATAA fd;
+//        HINTERNET hFind = ::FtpFindFirstFileA((HINTERNET)*pFtpConn, utf8Path.data(), &fd, INTERNET_FLAG_RELOAD | INTERNET_FLAG_PASSIVE, 0);
+//
+//        if (hFind != NULL) {
+//            // [정렬을 위한 임시 저장소]
+//            struct FileInfo { CString name; DWORD attr; };
+//            std::vector<FileInfo> folders;
+//            std::vector<FileInfo> files;
+//
+//            BOOL bContinue = TRUE;
+//            while (bContinue) {
+//                if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0) {
+//                    bContinue = ::InternetFindNextFileA(hFind, &fd);
+//                    continue;
+//                }
+//
+//                // 한글 변환
+//                int nUniLen = MultiByteToWideChar(CP_UTF8, 0, fd.cFileName, -1, NULL, 0);
+//                CString strName;
+//                if (nUniLen > 0) {
+//                    std::vector<wchar_t> uniBuf(nUniLen);
+//                    MultiByteToWideChar(CP_UTF8, 0, fd.cFileName, -1, uniBuf.data(), nUniLen);
+//                    strName = uniBuf.data();
+//                }
+//                else { strName = (CString)fd.cFileName; }
+//
+//                // 폴더와 파일을 각각 다른 바구니에 담기
+//                if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+//                    folders.push_back({ strName, fd.dwFileAttributes });
+//                else
+//                    files.push_back({ strName, fd.dwFileAttributes });
+//
+//                bContinue = ::InternetFindNextFileA(hFind, &fd);
+//            }
+//            ::InternetCloseHandle(hFind);
+//
+//            // [추가] 가나다순으로 이름 정렬 (선택 사항)
+//            auto sortFunc = [](const FileInfo& a, const FileInfo& b) { return a.name < b.name; };
+//            std::sort(folders.begin(), folders.end(), sortFunc);
+//            std::sort(files.begin(), files.end(), sortFunc);
+//
+//            // 1. 폴더 바구니 먼저 리스트에 쏟아붓기
+//            for (auto& f : folders) {
+//                int nIdx = m_ListCtrl.InsertItem(m_ListCtrl.GetItemCount(), f.name, 0);
+//                m_ListCtrl.SetItemText(nIdx, 2, L"<폴더>");
+//            }
+//
+//            // 2. 파일 바구니 그다음에 쏟아붓기
+//            for (auto& f : files) {
+//                int nIdx = m_ListCtrl.InsertItem(m_ListCtrl.GetItemCount(), f.name, 1);
+//                m_ListCtrl.SetItemText(nIdx, 1, L"0%");
+//                m_ListCtrl.SetItemText(nIdx, 2, L"대기 중");
+//            }
+//        }
+//    }
+//    catch (CInternetException* pEx) { pEx->Delete(); }
+//
+//    if (pFtpConn) { pFtpConn->Close(); delete pFtpConn; }
+//    session.Close();
+//    UpdateTotalStatus();
+//}
+
+
+//void Ckpaxkkk01Dlg::OnBnClickedBtnStart()
+//{
+//    // [진단 1] 버튼 동작 확인
+//    AfxMessageBox(L"진단 시작: 버튼이 눌렸습니다.");
+//
+//    m_strCurrentPath = L"/";
+//    m_ListCtrl.DeleteAllItems();
+//
+//    if (m_strCurrentPath != L"/") {
+//        int nIdx = m_ListCtrl.InsertItem(0, L"..", 0);
+//        m_ListCtrl.SetItemState(nIdx, INDEXTOSTATEIMAGEMASK(0), LVIS_STATEIMAGEMASK);
+//        m_ListCtrl.SetItemText(nIdx, 3, L"<상위 폴더>");
+//    }
+//
+//    // =================================================================
+//    // [수정됨] CInternetSession -> CMonitorSession (우리가 만든 감시용 클래스)
+//    // =================================================================
+//    CMonitorSession session(_T("KpaxWebHardClient"));
+//    CFtpConnection* pFtpConn = NULL;
+//
+//    try {
+//        // [진단 2] 접속 정보 미리 출력 (눈으로 확인하세요!)
+//        CString strConnectInfo;
+//        strConnectInfo.Format(L"접속 시도 정보\nIP: %s\nPORT: %d\nID: kpax\nPW: 1111", SERVER_IP, SERVER_PORT);
+//        AfxMessageBox(strConnectInfo);
+//
+//        // [여기서 상세 로그가 '출력' 창에 찍힙니다]
+//        // 비주얼 스튜디오 하단 '출력(Output)' 탭을 보세요!
+//        pFtpConn = session.GetFtpConnection(SERVER_IP, _T("kpax"), _T("1111"), SERVER_PORT, TRUE);
+//
+//        if (pFtpConn != NULL) {
+//            AfxMessageBox(L"★성공!★ GetFtpConnection 통과함!");
+//        }
+//
+//        pFtpConn->Command(_T("OPTS UTF8 ON"));
+//
+//        // ... (이하 기존 코드 동일) ...
+//        CString strSearchPath = m_strCurrentPath;
+//        if (strSearchPath.Right(1) != L"/") strSearchPath += L"/";
+//        strSearchPath += L"*.*";
+//
+//        int utf8PathLen = WideCharToMultiByte(CP_UTF8, 0, strSearchPath, -1, NULL, 0, NULL, NULL);
+//        std::vector<char> utf8Path(utf8PathLen);
+//        WideCharToMultiByte(CP_UTF8, 0, strSearchPath, -1, utf8Path.data(), utf8PathLen, NULL, NULL);
+//
+//        WIN32_FIND_DATAA fd;
+//        HINTERNET hFind = ::FtpFindFirstFileA((HINTERNET)*pFtpConn, utf8Path.data(), &fd, INTERNET_FLAG_RELOAD | INTERNET_FLAG_PASSIVE, 0);
+//
+//        if (hFind != NULL) {
+//            int fileCount = 0;
+//            BOOL bContinue = TRUE;
+//            while (bContinue) {
+//                fileCount++;
+//
+//                // 검색된 놈의 이름이 뭔지 확인!
+//                CString strFoundName(fd.cFileName);
+//                AfxMessageBox(L"찾은 항목 이름: " + strFoundName);
+//
+//                bContinue = ::InternetFindNextFileA(hFind, &fd);
+//            }
+//            ::InternetCloseHandle(hFind);
+//        }
+//        else {
+//            // 목록 가져오기 실패 시 에러 코드 확인
+//            DWORD dwErr = GetLastError();
+//            CString strErr;
+//            strErr.Format(L"접속은 됐는데 목록을 못 가져옴.\n에러코드: %d", dwErr);
+//            AfxMessageBox(strErr);
+//        }
+//    }
+//    catch (CInternetException* pEx) {
+//        // [진단 3] 에러 발생 시 상세 코드 출력
+//        TCHAR szErr[1024];
+//        pEx->GetErrorMessage(szErr, 1024);
+//
+//        CString strErrorMsg;
+//        strErrorMsg.Format(L"★★★ 치명적 에러 발생 ★★★\n에러 메시지: %s\n에러 코드(m_dwError): %d", szErr, pEx->m_dwError);
+//        AfxMessageBox(strErrorMsg);
+//
+//        pEx->Delete();
+//    }
+//
+//    if (pFtpConn) { pFtpConn->Close(); delete pFtpConn; }
+//    session.Close();
+//    UpdateTotalStatus();
+//}
+
+
 void Ckpaxkkk01Dlg::OnBnClickedBtnStart()
 {
     m_ListCtrl.DeleteAllItems();
 
-    // 상위 폴더 항목은 항상 최상단에 고정
+    // 1. 상위 폴더 항목 (루트가 아닐 때만 표시)
     if (m_strCurrentPath != L"/") {
-        int nIdx = m_ListCtrl.InsertItem(0, L"..", 0);
-        m_ListCtrl.SetItemText(nIdx, 2, L"<상위 폴더>");
+        int nIdx = m_ListCtrl.InsertItem(0, L"..", 0); // 0번 아이콘(폴더)
+        m_ListCtrl.SetItemState(nIdx, INDEXTOSTATEIMAGEMASK(0), LVIS_STATEIMAGEMASK);
+        m_ListCtrl.SetItemText(nIdx, 3, L"<상위 폴더>");
     }
 
-    CInternetSession session(_T("KpaxWebHardClient"));
+    CMonitorSession session(_T("KpaxWebHardClient"));
     CFtpConnection* pFtpConn = NULL;
 
     try {
-        pFtpConn = session.GetFtpConnection(SERVER_IP, _T("friend"), _T("1111"), 2121, TRUE);
+        pFtpConn = session.GetFtpConnection(SERVER_IP, _T("kpax"), _T("1111"), SERVER_PORT, TRUE);
+
         pFtpConn->Command(_T("OPTS UTF8 ON"));
 
         CString strSearchPath = m_strCurrentPath;
@@ -1184,8 +1532,8 @@ void Ckpaxkkk01Dlg::OnBnClickedBtnStart()
         HINTERNET hFind = ::FtpFindFirstFileA((HINTERNET)*pFtpConn, utf8Path.data(), &fd, INTERNET_FLAG_RELOAD | INTERNET_FLAG_PASSIVE, 0);
 
         if (hFind != NULL) {
-            // [정렬을 위한 임시 저장소]
-            struct FileInfo { CString name; DWORD attr; };
+            // 정렬을 위한 임시 저장소
+            struct FileInfo { CString name; ULONGLONG size; DWORD attr; };
             std::vector<FileInfo> folders;
             std::vector<FileInfo> files;
 
@@ -1196,7 +1544,7 @@ void Ckpaxkkk01Dlg::OnBnClickedBtnStart()
                     continue;
                 }
 
-                // 한글 변환
+                // 한글 유니코드 복원
                 int nUniLen = MultiByteToWideChar(CP_UTF8, 0, fd.cFileName, -1, NULL, 0);
                 CString strName;
                 if (nUniLen > 0) {
@@ -1204,69 +1552,83 @@ void Ckpaxkkk01Dlg::OnBnClickedBtnStart()
                     MultiByteToWideChar(CP_UTF8, 0, fd.cFileName, -1, uniBuf.data(), nUniLen);
                     strName = uniBuf.data();
                 }
-                else { strName = (CString)fd.cFileName; }
+                else strName = (CString)fd.cFileName;
 
-                // 폴더와 파일을 각각 다른 바구니에 담기
+                ULONGLONG fileSize = ((ULONGLONG)fd.nFileSizeHigh << 32) | fd.nFileSizeLow;
+
                 if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-                    folders.push_back({ strName, fd.dwFileAttributes });
+                    folders.push_back({ strName, 0, fd.dwFileAttributes });
                 else
-                    files.push_back({ strName, fd.dwFileAttributes });
+                    files.push_back({ strName, fileSize, fd.dwFileAttributes });
 
                 bContinue = ::InternetFindNextFileA(hFind, &fd);
             }
             ::InternetCloseHandle(hFind);
 
-            // [추가] 가나다순으로 이름 정렬 (선택 사항)
+            // 가나다순 정렬
             auto sortFunc = [](const FileInfo& a, const FileInfo& b) { return a.name < b.name; };
             std::sort(folders.begin(), folders.end(), sortFunc);
             std::sort(files.begin(), files.end(), sortFunc);
 
-            // 1. 폴더 바구니 먼저 리스트에 쏟아붓기
+            // [핵심] 리스트 컨트롤에 실제 데이터 삽입 시작
+            // 2. 폴더 먼저 삽입
             for (auto& f : folders) {
                 int nIdx = m_ListCtrl.InsertItem(m_ListCtrl.GetItemCount(), f.name, 0);
-                m_ListCtrl.SetItemText(nIdx, 2, L"<폴더>");
+                // 폴더는 체크박스 숨기기
+                m_ListCtrl.SetItemState(nIdx, INDEXTOSTATEIMAGEMASK(0), LVIS_STATEIMAGEMASK);
+                m_ListCtrl.SetItemText(nIdx, 3, L"<폴더>");
             }
 
-            // 2. 파일 바구니 그다음에 쏟아붓기
+            // 3. 파일 삽입
             for (auto& f : files) {
                 int nIdx = m_ListCtrl.InsertItem(m_ListCtrl.GetItemCount(), f.name, 1);
-                m_ListCtrl.SetItemText(nIdx, 1, L"0%");
-                m_ListCtrl.SetItemText(nIdx, 2, L"대기 중");
+                m_ListCtrl.SetItemText(nIdx, 1, FormatFileSize(f.size));
+                m_ListCtrl.SetItemText(nIdx, 2, L"0%");
+                m_ListCtrl.SetItemText(nIdx, 3, L"대기 중");
             }
         }
     }
-    catch (CInternetException* pEx) { pEx->Delete(); }
+    catch (CInternetException* pEx) {
+        TCHAR szErr[1024];
+        pEx->GetErrorMessage(szErr, 1024);
+        AfxMessageBox(L"서버 접속 오류: " + CString(szErr));
+        pEx->Delete();
+    }
 
     if (pFtpConn) { pFtpConn->Close(); delete pFtpConn; }
     session.Close();
+
+    // 화면 갱신 강제 수행
+    m_ListCtrl.Invalidate();
+    m_ListCtrl.UpdateWindow();
     UpdateTotalStatus();
 }
 
 
+
 LRESULT Ckpaxkkk01Dlg::OnUpdateSpeed(WPARAM wp, LPARAM lp) {
-    int speedData = LOWORD(wp); // 속도 (*10 상태)
-    int eta = HIWORD(wp);       // 남은 시간 (초)
     int nIdx = (int)lp;
 
+    // [핵심 추가] 현재 칸의 파일명과 상태를 확인하여 상위 폴더/일반 폴더면 종료
+    CString strCurrentName = m_ListCtrl.GetItemText(nIdx, 0);
+    CString strStatusText = m_ListCtrl.GetItemText(nIdx, 3);
+
+    if (strCurrentName == L".." || strStatusText == L"<폴더>" || strStatusText == L"완료") {
+        return 0;
+    }
+
+    int speedData = LOWORD(wp);
+    int eta = HIWORD(wp);
     double mbps = speedData / 10.0;
     CString strStatus;
 
-    if (mbps < 0.1) {
-        strStatus = L"연결 중...";
-    }
+    if (mbps < 0.1) strStatus = L"연결 중...";
     else {
-        // [수정] 남은 시간을 분:초 형식으로 변환
-        if (eta >= 60) {
-            strStatus.Format(L"전송 중 (%.1f MB/s) - %d분 %d초 남음", mbps, eta / 60, eta % 60);
-        }
-        else {
-            strStatus.Format(L"전송 중 (%.1f MB/s) - %d초 남음", mbps, eta);
-        }
+        if (eta >= 60) strStatus.Format(L"%.1f MB/s - %d분 %d초 남음", mbps, eta / 60, eta % 60);
+        else strStatus.Format(L"%.1f MB/s - %d초 남음", mbps, eta);
     }
 
-    // 리스트 컨트롤의 '상태' 컬럼 업데이트
-    m_ListCtrl.SetItemText(nIdx, 2, strStatus);
-
+    m_ListCtrl.SetItemText(nIdx, 3, strStatus);
     return 0;
 }
 
@@ -1420,25 +1782,52 @@ void Ckpaxkkk01Dlg::OnBnClickedBtnBrowse()
 void Ckpaxkkk01Dlg::OnBnClickedBtnDeleteSelected()
 {
     int nItemCount = m_ListCtrl.GetItemCount();
-    BOOL bAny = FALSE;
+    if (nItemCount <= 0) return;
 
-    // 하나라도 조건에 맞는지 확인
+    BOOL bAnyFileSelected = FALSE;
+
+    // 1. 먼저 삭제 대상이 있는지 검사 (폴더는 무조건 제외)
     for (int i = 0; i < nItemCount; i++) {
-        if (m_ListCtrl.GetCheck(i) || (m_ListCtrl.GetItemState(i, LVIS_SELECTED) == LVIS_SELECTED)) {
-            bAny = TRUE;
+        CString strFileName = m_ListCtrl.GetItemText(i, 0);   // 파일명 (0번)
+        CString strStatus = m_ListCtrl.GetItemText(i, 3);     // 상태 (3번)
+
+        // 공백 제거 후 비교 (안전 장치)
+        strFileName.Trim();
+        strStatus.Trim();
+
+        // [중요] 상위폴더(..) 이거나 상태가 <폴더>인 경우 '삭제 가능 대상'에서 아예 제외
+        if (strFileName == L".." || strStatus == L"<폴더>") {
+            continue;
+        }
+
+        // 파일인데 체크되어 있거나 마우스로 선택된 경우
+        if (m_ListCtrl.GetCheck(i) || (m_ListCtrl.GetItemState(i, LVIS_SELECTED) & LVIS_SELECTED)) {
+            bAnyFileSelected = TRUE;
             break;
         }
     }
 
-    if (!bAny) {
-        AfxMessageBox(L"삭제할 항목을 체크하거나 클릭해 주세요.");
+    if (!bAnyFileSelected) {
+        AfxMessageBox(L"목록에서 제거할 '파일' 항목을 선택해 주세요.\n(상위 폴더와 일반 폴더는 삭제할 수 없습니다.)");
         return;
     }
 
-    if (AfxMessageBox(L"선택한 항목을 삭제하시겠습니까?", MB_YESNO) == IDYES) {
+    // 2. 실제 삭제 진행
+    if (AfxMessageBox(L"선택한 파일 항목을 목록에서 삭제하시겠습니까?", MB_YESNO | MB_ICONQUESTION) == IDYES) {
+        // [주의] 삭제는 반드시 역순(뒤에서부터)으로 해야 인덱스가 안 꼬입니다.
         for (int i = nItemCount - 1; i >= 0; i--) {
-            // 체크박스가 켜져 있거나, 마우스로 선택되었거나
-            if (m_ListCtrl.GetCheck(i) || (m_ListCtrl.GetItemState(i, LVIS_SELECTED) == LVIS_SELECTED)) {
+            CString strFileName = m_ListCtrl.GetItemText(i, 0);
+            CString strStatus = m_ListCtrl.GetItemText(i, 3);
+            strFileName.Trim();
+            strStatus.Trim();
+
+            // [최종 방어선] 파일명이 .. 이거나 상태가 <폴더>면 삭제 명령 무시
+            if (strFileName == L".." || strStatus == L"<폴더>") {
+                continue;
+            }
+
+            // 선택된 파일만 삭제
+            if (m_ListCtrl.GetCheck(i) || (m_ListCtrl.GetItemState(i, LVIS_SELECTED) & LVIS_SELECTED)) {
                 m_ListCtrl.DeleteItem(i);
             }
         }
@@ -1455,7 +1844,7 @@ void Ckpaxkkk01Dlg::OnNMDblclkListDownload(NMHDR* pNMHDR, LRESULT* pResult)
 
     if (nIdx != -1) {
         CString strName = m_ListCtrl.GetItemText(nIdx, 0);
-        CString strStatus = m_ListCtrl.GetItemText(nIdx, 2);
+        CString strStatus = m_ListCtrl.GetItemText(nIdx, 3);
 
         // [추가] 상위 폴더 이동 로직
         if (strName == L"..") {
