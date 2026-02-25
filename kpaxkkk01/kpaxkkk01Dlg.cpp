@@ -708,10 +708,37 @@ BOOL Ckpaxkkk01Dlg::OnInitDialog() {
         // 16x16 크기, 32비트 컬러 아이콘 리스트 생성
         m_ImageList.Create(16, 16, ILC_COLOR32 | ILC_MASK, 2, 2);
 
+
+        SHFILEINFO sfi;
+        // 변수 선언은 여기서 한 번만 합니다.
+        HICON hFolderIcon = NULL;
+        HICON hFileIcon = NULL;
+
+        // 2. 윈도우 실제 폴더 아이콘 가져오기
+        SHGetFileInfo(L"C:\\Windows", FILE_ATTRIBUTE_DIRECTORY, &sfi, sizeof(sfi),
+            SHGFI_ICON | SHGFI_SMALLICON | SHGFI_USEFILEATTRIBUTES);
+        hFolderIcon = sfi.hIcon; // 위에서 선언한 변수에 값만 대입
+
+        // 3. 윈도우 실제 파일 아이콘 가져오기
+        SHGetFileInfo(L"test.txt", FILE_ATTRIBUTE_NORMAL, &sfi, sizeof(sfi),
+            SHGFI_ICON | SHGFI_SMALLICON | SHGFI_USEFILEATTRIBUTES);
+        hFileIcon = sfi.hIcon; // 위에서 선언한 변수에 값만 대입
+
+        // 4. 이미지 리스트에 추가 (0번: 폴더, 1번: 파일)
+        if (hFolderIcon) m_ImageList.Add(hFolderIcon);
+        if (hFileIcon) m_ImageList.Add(hFileIcon);
+
+        // 5. 메모리 정리 (중요!)
+        if (hFolderIcon) DestroyIcon(hFolderIcon);
+        if (hFileIcon) DestroyIcon(hFileIcon);
+
+        // ---------------------------------------------------------
+
+
         // 윈도우 표준 시스템 아이콘 로드 (IDI_FOLDER 대신 표준 상수 사용)
         // IDI_APPLICATION을 사용하거나 아래처럼 직접 윈도우 핸들로 가져올 수 있습니다.
-        HICON hFolderIcon = AfxGetApp()->LoadStandardIcon(IDI_APPLICATION); // 기본 앱 모양
-        HICON hFileIcon = AfxGetApp()->LoadStandardIcon(IDI_WINLOGO);     // 윈도우 로고 모양
+        //HICON hFolderIcon = AfxGetApp()->LoadStandardIcon(IDI_APPLICATION); // 기본 앱 모양
+        //HICON hFileIcon = AfxGetApp()->LoadStandardIcon(IDI_WINLOGO);     // 윈도우 로고 모양
 
         // 만약 더 폴더다운 아이콘을 원하시면 아래 주석처리된 방식을 쓰세요 (Shell API)
         /*
