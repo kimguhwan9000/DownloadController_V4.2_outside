@@ -76,6 +76,7 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
+    <TargetName>Guhwan Company Download,Upload 컨트롤러 v4.2</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
@@ -207,6 +208,8 @@
     <None Include="res\kpaxkkk01.rc2" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="guhwan01.ico" />
+    <Image Include="guhwan02.ico" />
     <Image Include="res\kpaxkkk01.ico" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -720,6 +720,9 @@ BOOL Ckpaxkkk01Dlg::OnInitDialog() {
     SetIcon(m_hIcon, TRUE);
     SetIcon(m_hIcon, FALSE);
 
+    // 프로그램 창 제목(캡션)을 변경합니다.
+    SetWindowText(L"Guhwan Company Download,Upload 컨트롤러 v4.2");
+
     // 1. 리스트 컨트롤 초기화
     DWORD dwExStyle = LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_CHECKBOXES | LVS_EX_DOUBLEBUFFER;
     m_ListCtrl.SetExtendedStyle(dwExStyle);
